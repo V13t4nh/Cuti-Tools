@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cuti-tools"
+version = "1.0.0"
+description = "Watch-arbitrage decision tool: auction comparables, net-proceeds pricing, liquidity index."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "plotly>=6.0,<7",
+    "rapidfuzz>=3.9,<4",
+    "streamlit>=1.42,<2",
+]
+
+[project.scripts]
+cuti = "cuti.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"

@@ -1,0 +1,44 @@
+{
+  "_comment": "Normalization vocabulary. Edit this file to tune matching; no code change needed.",
+  "brands": {
+    "omega": ["omega sa"],
+    "rolex": [],
+    "seiko": [],
+    "tudor": [],
+    "longines": [],
+    "tissot": [],
+    "citizen": [],
+    "orient": [],
+    "hamilton": [],
+    "certina": [],
+    "oris": [],
+    "zenith": [],
+    "iwc": ["international watch co"],
+    "grand seiko": ["gs"],
+    "a lange sohne": ["a lange und sohne", "lange sohne"]
+  },
+  "condition": {
+    "priority": ["fullset", "papers", "box", "naked"],
+    "keywords": {
+      "fullset": ["full set", "fullset", "box and papers", "box papers", "complete set", "du hop so", "du hop the"],
+      "papers": ["papers", "warranty card", "certificate", "paper", "co giay", "co so", "co the", "the bao hanh"],
+      "box": ["box", "boxed", "with box", "original box", "co hop"],
+      "naked": ["naked", "watch only", "head only", "dong ho tran"]
+    }
+  },
+  "stopwords": [
+    "watch", "wristwatch", "men", "mens", "man", "women", "womens", "lady", "ladies",
+    "unisex", "automatic", "quartz", "manual", "winding", "vintage", "new", "nos",
+    "mint", "used", "rare", "original", "authentic", "genuine", "steel", "stainless",
+    "gold", "plated", "dial", "case", "mm", "circa", "year", "no", "ref", "reference",
+    "and", "with", "the", "from", "for", "set", "full", "complete", "card", "warranty",
+    "certificate", "papers", "paper", "box", "boxed", "only", "head", "naked",
+    "dong", "ho", "ban", "can", "chinh", "hang", "gia", "tot"
+  ],
+  "identity_tokens": [
+    "automatic", "quartz", "manual", "hand-wound", "handwound",
+    "self-winding", "solar", "kinetic", "spring-drive"
+  ],
+  "model_token_limit": 2,
+  "reference_pattern": "(?:[a-z]{1,4}[0-9]+(?:[.\\-][a-z0-9]+)+|[a-z]{1,4}[0-9]{3,}[a-z0-9.\\-]*|[0-9]{4,}[a-z0-9.\\-]*|[0-9]{2,}(?:\\.[0-9]{2,})+)"
+}

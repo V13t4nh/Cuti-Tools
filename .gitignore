@@ -1,0 +1,52 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Runtime data and generated reports
+var/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Local repository indexes and caches
+.codegraph/
+.cache/
+.hypothesis/
+.tox/
+.nox/
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# Packaging and build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Test and coverage artifacts
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE and OS files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
