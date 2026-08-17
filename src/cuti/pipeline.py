@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -11,32 +12,37 @@ from urllib.parse import unquote, urlparse
 
 from .comparables import find_comparables
 from .config import Settings
-from .errors import ScrapeError
-from .fetch import fetch_json, fetch_text, resolve, to_url
+from .errors import NormalizationError, ScrapeError
+from .fetch import fetch_json, fetch_text, probe_url, resolve, to_url
 from .models import Condition, Deal, Lot, Verdict, WatchForm
 from .normalize import Rules, classify
 from .notifier import Notifier
 from .pricing import PriceQuote, quote
-from .scrapers import catawiki, deals as deals_scraper
+from .scrapers import catawiki, catawiki_api, deals as deals_scraper
 from .storage import (
     ComparableSnapshot,
+    LiveWatchRow,
     claim_pending_alerts,
+    delete_live_watch,
+    fetch_live_watch_due,
+    fetch_lots_for_source_check,
     fetch_unquoted_deals,
     insert_deals_if_new,
     insert_quote,
     mark_alert_failed,
     mark_alert_sent,
+    mark_source_availability,
+    count_live_watch,
     outbox_counts,
+    upsert_live_watch,
     upsert_lots,
 )
-
 
 @dataclass(frozen=True, slots=True)
 class IngestReport:
     pages_fetched: int
     lots_written: int
     stopped_reason: str
-
 
 @dataclass(frozen=True, slots=True)
 class QuoteReport:
@@ -48,7 +54,6 @@ class QuoteReport:
     price: PriceQuote
     comparable_titles: tuple[str, ...]
     quote_id: int
-
 
 @dataclass(frozen=True, slots=True)
 class WatchReport:
@@ -63,14 +68,12 @@ class WatchReport:
     verdicts: tuple[tuple[str, Verdict], ...]
     errors: tuple[str, ...]
 
-
 def _local_path(url: str) -> Path:
     parsed = urlparse(url)
     path = unquote(parsed.path)
     if len(path) >= 3 and path[0] == "/" and path[2] == ":":
         path = path[1:]
     return Path(path).resolve()
-
 
 def _safe_next_url(root_url: str, current_url: str, next_href: str) -> str:
     """Resolve pagination without allowing a feed to leave its source origin."""
@@ -84,7 +87,6 @@ def _safe_next_url(root_url: str, current_url: str, next_href: str) -> str:
     ):
         raise ScrapeError(f"pagination left the configured source directory: {candidate}")
     return candidate
-
 
 def ingest_lots(
     conn: sqlite3.Connection, rules: Rules, settings: Settings, now: datetime
@@ -153,14 +155,12 @@ def ingest_lots(
         stopped_reason=reason,
     )
 
-
 def _rules_fingerprint(settings: Settings) -> str:
     try:
         payload = settings.rules_path.read_bytes()
     except OSError as exc:
         raise ScrapeError(f"cannot fingerprint rules file {settings.rules_path}: {exc}") from exc
     return hashlib.sha256(payload).hexdigest()
-
 
 def quote_watch(
     conn: sqlite3.Connection,
@@ -263,7 +263,6 @@ def quote_watch(
         quote_id=quote_id,
     )
 
-
 def _drain_alerts(
     conn: sqlite3.Connection,
     notifier: Notifier,
@@ -290,7 +289,6 @@ def _drain_alerts(
             mark_alert_sent(conn, alert.id, now)
             sent += 1
     return sent, failed, errors
-
 
 def watch_deals(
     conn: sqlite3.Connection,
@@ -387,7 +385,6 @@ def watch_deals(
         errors=tuple(delivery_errors),
     )
 
-
 def _alert_payload(
     deal: Deal,
     *,
@@ -416,3 +413,305 @@ def _alert_payload(
         "break_even_hammer_eur": round(price.break_even_hammer_eur, 2),
         "median_days_to_close": price.median_days_to_close,
     }
+
+# --- Live auction capture -------------------------------------------------
+#
+# The auction source cannot be searched for closed lots, so a hammer price can
+# only be collected in two phases: capture ids while bidding is open
+# (`watch_live`), then read the final result after bidding ends (`settle_lots`).
+# `check_source_urls` records whether a stored lot page can still be opened, so
+# a price that can no longer be verified is flagged instead of silently trusted.
+
+@dataclass(frozen=True, slots=True)
+class WatchLiveReport:
+    queries: tuple[str, ...]
+    pages_fetched: int
+    lots_seen: int
+    lots_tracked: int
+    lots_refreshed: int
+    windows_unknown: int
+    requests_made: int
+
+@dataclass(frozen=True, slots=True)
+class SettleReport:
+    candidates: int
+    sold: int
+    unsold: int
+    still_open: int
+    vanished: int
+    unclassified: int
+    lots_written: int
+    queue_remaining: int
+    requests_made: int
+
+@dataclass(frozen=True, slots=True)
+class SourceCheckReport:
+    checked: int
+    alive: int
+    dead: int
+
+@dataclass(slots=True)
+class _Settlement:
+    """Working result of one settle pass, before anything is written."""
+
+    lots: list[Lot]
+    finished: list[str]
+    refreshed: list[LiveWatchRow]
+    sold: int = 0
+    unsold: int = 0
+    still_open: int = 0
+    vanished: int = 0
+    unclassified: int = 0
+
+def _catawiki_client(
+    settings: Settings, api: catawiki_api.CatawikiApi | None = None
+) -> catawiki_api.CatawikiApi:
+    if api is not None:
+        return api
+    return catawiki_api.CatawikiApi(
+        api_base=settings.catawiki_api_base,
+        timeout_seconds=settings.http_timeout_seconds,
+        max_bytes=settings.response_max_bytes,
+        pause_seconds=settings.catawiki_pause_seconds,
+    )
+
+def watch_live(
+    conn: sqlite3.Connection,
+    settings: Settings,
+    now: datetime,
+    *,
+    api: catawiki_api.CatawikiApi | None = None,
+) -> WatchLiveReport:
+    """Phase 1: record every lot that is open right now, with its close date."""
+    client = _catawiki_client(settings, api)
+    refs: dict[str, catawiki_api.LotRef] = {}
+    pages = 0
+    for query in settings.catawiki_queries:
+        for page_number in range(1, settings.catawiki_search_max_pages + 1):
+            page = client.search(query, page_number)
+            pages += 1
+            if not page.lots:
+                break
+            for ref in page.lots:
+                # One lot can match several queries; first sighting wins.
+                refs.setdefault(ref.lot_id, ref)
+
+    # Search results carry no end time, so the window comes from a batched
+    # live-state lookup. A lot that closed while we were paging keeps an unknown
+    # window and is therefore due immediately.
+    windows: dict[str, date] = {}
+    for batch in catawiki_api.chunks(list(refs), settings.catawiki_batch_size):
+        for lot_id, state in client.live_states(batch).items():
+            if not state.closed:
+                windows[lot_id] = state.ended_at
+
+    rows = [
+        LiveWatchRow(
+            lot_id=lot_id,
+            source=catawiki_api.SOURCE_NAME,
+            title=ref.title,
+            subtitle=ref.subtitle,
+            url=ref.url,
+            bidding_end_at=windows.get(lot_id),
+        )
+        for lot_id, ref in refs.items()
+    ]
+    tracked, refreshed = upsert_live_watch(conn, rows, now)
+    return WatchLiveReport(
+        queries=settings.catawiki_queries,
+        pages_fetched=pages,
+        lots_seen=len(rows),
+        lots_tracked=tracked,
+        lots_refreshed=refreshed,
+        windows_unknown=sum(1 for row in rows if row.bidding_end_at is None),
+        requests_made=client.requests_made,
+    )
+
+def _settled_lot(
+    row: LiveWatchRow,
+    state: catawiki_api.LiveState,
+    outcome: catawiki_api.BiddingOutcome,
+    rules: Rules,
+) -> Lot:
+    """Turn a closed lot into a storable record, or raise NormalizationError.
+
+    `form` stays UNKNOWN because the buyer JSON never states the case shape;
+    guessing it would poison the brand/form liquidity index.
+    """
+    classification = classify(row.title, rules)
+    if classification.condition is None:
+        raise NormalizationError(f"{row.lot_id}: title states no condition")
+    return Lot(
+        lot_id=row.lot_id,
+        source=row.source,
+        title=row.title,
+        brand=classification.brand,
+        model_key=classification.model_key,
+        condition_tag=classification.condition,
+        form=WatchForm.UNKNOWN,
+        hearts=state.favorite_count,
+        sold=outcome.is_sold,
+        hammer_eur=outcome.hammer_eur,
+        opened_at=state.opened_at,
+        ended_at=state.ended_at,
+        url=row.url,
+        subtitle=row.subtitle,
+        bids_count=outcome.bids_count,
+    )
+
+def _settle(
+    client: catawiki_api.CatawikiApi,
+    rules: Rules,
+    settings: Settings,
+    candidates: list[LiveWatchRow],
+) -> _Settlement:
+    """Read the final state of every candidate without writing anything."""
+    by_id = {row.lot_id: row for row in candidates}
+    result = _Settlement(lots=[], finished=[], refreshed=[])
+    for batch in catawiki_api.chunks(list(by_id), settings.catawiki_batch_size):
+        states = client.live_states(batch)
+        for lot_id in batch:
+            row = by_id[lot_id]
+            state = states.get(lot_id)
+            if state is None:
+                # The source forgot the lot before we could settle it. Nothing
+                # can be recovered, so stop asking for it.
+                result.vanished += 1
+                result.finished.append(lot_id)
+                continue
+            if not state.closed:
+                # Bidding was extended. Re-queue with the new end date.
+                result.still_open += 1
+                result.refreshed.append(
+                    LiveWatchRow(
+                        lot_id=row.lot_id,
+                        source=row.source,
+                        title=row.title,
+                        subtitle=row.subtitle,
+                        url=row.url,
+                        bidding_end_at=state.ended_at,
+                    )
+                )
+                continue
+            outcome = client.outcome(lot_id)
+            if not outcome.is_closed:
+                result.still_open += 1
+                continue
+            try:
+                lot = _settled_lot(row, state, outcome, rules)
+            except NormalizationError:
+                # Unlike `ingest_lots`, a live crawl must not abort on one
+                # unparseable title: the source is not a curated fixture. The
+                # lot is dropped from the queue and counted, never guessed.
+                result.unclassified += 1
+                result.finished.append(lot_id)
+                continue
+            result.lots.append(lot)
+            result.finished.append(lot_id)
+            if outcome.is_sold:
+                result.sold += 1
+            else:
+                result.unsold += 1
+    return result
+
+def _persist_settlement(
+    conn: sqlite3.Connection, settlement: _Settlement, now: datetime
+) -> int:
+    written = upsert_lots(conn, settlement.lots, now)
+    if settlement.refreshed:
+        upsert_live_watch(conn, settlement.refreshed, now)
+    delete_live_watch(conn, settlement.finished)
+    return written
+
+def settle_lots(
+    conn: sqlite3.Connection,
+    rules: Rules,
+    settings: Settings,
+    today: date,
+    now: datetime,
+    *,
+    api: catawiki_api.CatawikiApi | None = None,
+) -> SettleReport:
+    """Phase 2: read the hammer price of every tracked lot that has closed."""
+    client = _catawiki_client(settings, api)
+    candidates = fetch_live_watch_due(conn, until=today, limit=settings.settle_max_lots)
+    settlement = _settle(client, rules, settings, candidates)
+    written = _persist_settlement(conn, settlement, now)
+    return SettleReport(
+        candidates=len(candidates),
+        sold=settlement.sold,
+        unsold=settlement.unsold,
+        still_open=settlement.still_open,
+        vanished=settlement.vanished,
+        unclassified=settlement.unclassified,
+        lots_written=written,
+        queue_remaining=count_live_watch(conn),
+        requests_made=client.requests_made,
+    )
+
+def ingest_one_lot(
+    conn: sqlite3.Connection,
+    rules: Rules,
+    settings: Settings,
+    today: date,
+    now: datetime,
+    *,
+    url: str,
+    api: catawiki_api.CatawikiApi | None = None,
+) -> SettleReport:
+    """Track a single lot URL and settle it immediately if bidding has ended."""
+    client = _catawiki_client(settings, api)
+    lot_id = catawiki_api.lot_id_from_url(url)
+    titles = client.titles([lot_id])
+    if lot_id not in titles:
+        raise ScrapeError(f"lot {lot_id} is no longer readable at the source")
+    known = titles[lot_id]
+    row = LiveWatchRow(
+        lot_id=lot_id,
+        source=catawiki_api.SOURCE_NAME,
+        title=known.title,
+        subtitle=None,
+        url=known.url,
+        bidding_end_at=None,
+    )
+    upsert_live_watch(conn, [row], now)
+    settlement = _settle(client, rules, settings, [row])
+    written = _persist_settlement(conn, settlement, now)
+    return SettleReport(
+        candidates=1,
+        sold=settlement.sold,
+        unsold=settlement.unsold,
+        still_open=settlement.still_open,
+        vanished=settlement.vanished,
+        unclassified=settlement.unclassified,
+        lots_written=written,
+        queue_remaining=count_live_watch(conn),
+        requests_made=client.requests_made,
+    )
+
+def check_source_urls(
+    conn: sqlite3.Connection,
+    settings: Settings,
+    now: datetime,
+    *,
+    probe: object = None,
+) -> SourceCheckReport:
+    """Flag stored lots whose source page can no longer be opened.
+
+    A page counts as alive only when it answers 200 *and* still resolves to the
+    same lot: an expired lot is redirected to a category page, which would
+    otherwise look like a healthy 200.
+    """
+    probe_fn = probe or probe_url
+    candidates = fetch_lots_for_source_check(conn, limit=settings.url_check_max_lots)
+    results: dict[str, bool] = {}
+    for index, (lot_id, url) in enumerate(candidates):
+        if index and settings.catawiki_pause_seconds > 0:
+            time.sleep(settings.catawiki_pause_seconds)
+        status, final_url = probe_fn(url, settings.http_timeout_seconds)
+        results[lot_id] = status == 200 and f"/l/{lot_id}" in final_url
+    mark_source_availability(conn, results, now)
+    alive = sum(1 for ok in results.values() if ok)
+    return SourceCheckReport(
+        checked=len(results), alive=alive, dead=len(results) - alive
+    )
