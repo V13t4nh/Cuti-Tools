@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-from . import catawiki, deals
+from . import catawiki, catawiki_api, deals
 
-__all__ = ["catawiki", "deals"]
+__all__ = ["catawiki", "catawiki_api", "deals"]

@@ -19,14 +19,12 @@ from typing import Any
 from .errors import FetchError
 
 SUPPORTED_SCHEMES = ("http", "https", "file")
-USER_AGENT = "cuti-tools/1.0 (+https://example.invalid/cuti)"
+USER_AGENT = "cuti-tools/1.0 (+https://github.com/V13t4nh/Cuti-Tools)"
 DEFAULT_MAX_BYTES = 5_000_000
-
 
 def _safe_url(url: str) -> str:
     """Redact Telegram-style bot credentials before including a URL in errors."""
     return re.sub(r"/bot[^/]+/", "/bot<redacted>/", url)
-
 
 def to_url(location: str) -> str:
     """Normalize a plain path into a ``file://`` URL; leave URLs untouched."""
@@ -44,11 +42,9 @@ def to_url(location: str) -> str:
         )
     return Path(location).resolve().as_uri()
 
-
 def resolve(base_url: str, href: str) -> str:
     """Resolve a possibly relative link against the page it was found on."""
     return urllib.parse.urljoin(base_url, href)
-
 
 def fetch_text(
     location: str, timeout_seconds: float, max_bytes: int = DEFAULT_MAX_BYTES
@@ -76,13 +72,31 @@ def fetch_text(
     except UnicodeDecodeError as exc:
         raise FetchError(f"{url}: payload is not valid UTF-8") from exc
 
-
 def fetch_json(location: str, timeout_seconds: float, max_bytes: int = DEFAULT_MAX_BYTES) -> Any:
     text = fetch_text(location, timeout_seconds, max_bytes)
     try:
         return json.loads(text)
     except json.JSONDecodeError as exc:
         raise FetchError(f"{location}: invalid JSON ({exc})") from exc
+
+def probe_url(url: str, timeout_seconds: float) -> tuple[int, str]:
+    """Check whether a page still exists, without reading its body.
+
+    Returns the HTTP status and the final URL after redirects, so a caller can
+    tell "still the same lot page" from "redirected to a category page". A 4xx
+    answer is a result, not an error; only transport failures raise.
+    """
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            status = int(getattr(response, "status", 0) or 0)
+            return status, response.geturl()
+    except urllib.error.HTTPError as exc:
+        return int(exc.code), url
+    except urllib.error.URLError as exc:
+        raise FetchError(f"{_safe_url(url)}: {exc.reason}") from exc
+    except OSError as exc:
+        raise FetchError(f"{_safe_url(url)}: {exc}") from exc
 
 
 def post_json(
