@@ -91,7 +91,7 @@ net = hammer * (1 - 0.125) - VAT_phí(0.21 trên phí) - ship - giá_vốn
 
 Dùng **median + p25/p75** thay vì mean + độ lệch chuẩn: chống outlier tốt hơn, không cần giả định phân phối chuẩn.
 
-### Schema SQLite (đủ dùng, 3 bảng)
+### Schema SQLite (đủ dùng, 4 bảng lõi)
 
 ```mermaid
 erDiagram
@@ -105,6 +105,13 @@ erDiagram
     int hammer_eur
     date ended_at
     int days_to_close
+  }
+  LIVE_WATCH {
+    text lot_id PK
+    text title
+    date bidding_end_at
+    text first_seen_at
+    text last_seen_at
   }
   DEALS {
     int id PK
@@ -121,6 +128,7 @@ erDiagram
     text verdict
     date created_at
   }
+  LIVE_WATCH ||--o| LOTS : "chốt xong thì xoá khỏi queue"
   LOTS ||--o{ QUOTES : "comparables"
   DEALS ||--o{ QUOTES : "sinh từ"
 ```
@@ -236,20 +244,55 @@ gantt
 Đã hoàn tất end-to-end bằng dữ liệu mẫu:
 
 - Scale 0: SQLite schema v2 + FTS5, normalization/reference matching,
-  p25/median/p75, Streamlit và audit snapshot.
+ p25/median/p75, Streamlit và audit snapshot.
 - Scale 1: histogram + vạch giá vốn, median theo quý, gia tốc tim.
 - Scale 2: deal feed strict contract, dedupe, caller dùng chung pricing,
-  Telegram/file notifier và SQLite outbox retry.
+ Telegram/file notifier và SQLite outbox retry.
 - Scale 3: liquidity theo `brand + form`, QoQ trên quý đã hoàn tất và cảnh báo
-  giảm quá ngưỡng hai quý liên tiếp.
+ giảm quá ngưỡng hai quý liên tiếp.
 - Portability/reliability: local path và Windows path, giới hạn response,
-  preflight trước khi ghi, migration v1→v2, deterministic fixtures và E2E.
+ preflight trước khi ghi, migration v1→v2, deterministic fixtures và E2E.
 - Correctness hardening: text-only model tách identity ảnh hưởng giá, năm không
-  cue không bị nhận nhầm làm reference, không cắt ngầm comparables, input UI
-  bắt buộc explicit, legacy audit được đánh dấu không replayable.
+ cue không bị nhận nhầm làm reference, không cắt ngầm comparables, input UI
+ bắt buộc explicit, legacy audit được đánh dấu không replayable.
 - Watch reliability: lỗi quote không bị nuốt, CLI trả non-zero khi delivery lỗi,
-  outbox vẫn drain khi nguồn deal lỗi và stale deal được lọc ngay trong SQLite.
+ outbox vẫn drain khi nguồn deal lỗi và stale deal được lọc ngay trong SQLite.
 
 Chủ động để sau đúng theo quyết định sản phẩm: adapter crawl Catawiki thật,
 adapter Facebook/marketplace thật và lịch chạy production. Các adapter này chỉ
 cấp input vào contract hiện có, không thay đổi logic downstream.
+
+---
+
+## 9. Bắt giá búa thật trên Catawiki (2 pha)
+
+Catawiki chỉ cho tìm kiếm lot **đang mở**, và trang lot hết hạn sau vài tháng.
+Do đó không tồn tại cách "cào lịch sử giá búa" một lần: phải bắt sống rồi chốt.
+
+```mermaid
+flowchart LR
+  S["search?q=watch"] --> L["lots/live?ids=..."]
+  L -->|"closed=false"| W[("live_watch")]
+  L -->|"đã đóng lúc đang phân trang"| W
+  W -->|"bidding_end_at &lt;= today"| B["bidding_block?currency_code=EUR"]
+  B -->|"còn mở, gia hạn"| W
+  B -->|"is_sold=true"| H["hammer_eur + bids_count + hearts"]
+  B -->|"is_sold=false"| U["unsold, hammer = NULL"]
+  H --> DB[("lots")]
+  U --> DB
+  L -->|"mất khỏi API"| V["vanished: xoá khỏi queue"]
+  DB --> P["check-urls hàng tuần → source_available"]
+```
+
+Bốn kết cục của một lot trong queue, tất cả đều là kết cục cuối, không lặp vô hạn:
+
+| Kết cục | Điều kiện | Hành động |
+| --- | --- | --- |
+| `sold` | `is_closed` và `is_sold` | ghi `lots` với giá búa, xoá khỏi queue |
+| `unsold` | `is_closed`, không bán | ghi `lots`, `hammer_eur = NULL` |
+| `still_open` | phiên được gia hạn | cập nhật `bidding_end_at`, giữ trong queue |
+| `vanished` / `unclassified` | nguồn xoá lot, hoặc title không nói tình trạng | đếm lại và xoá khỏi queue |
+
+Giới hạn cố ý: không lưu ảnh, không lưu sổ từng lần đấu, không quét dải lot id,
+không Playwright, không proxy. `hearts` và `bids_count` chỉ chụp một lần tại lúc
+đóng — đủ để đo sức nóng mà vẫn giữ database ở mức KISS.

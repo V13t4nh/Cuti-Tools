@@ -44,6 +44,31 @@ Mở giao diện buyer một trang:
 Giao diện có form chấm deal, comparables, histogram giá kèm vạch giá vốn,
 median theo quý, gia tốc tim và bảng thanh khoản theo `brand + form`.
 
+## Bắt giá búa thật từ Catawiki (2 pha)
+
+Catawiki không cho tìm kiếm lot đã đóng: search chỉ trả lot đang mở, và trang
+lot cũ sẽ hết hạn sau vài tháng. Vì vậy giá búa chỉ lấy được theo hai pha:
+
+```powershell
+.\.venv\Scripts\cuti.exe watch-live    # pha 1: xếp hàng lot đang mở + ngày đóng
+.\.venv\Scripts\cuti.exe settle        # pha 2: lot đã đóng thì đọc giá búa
+.\.venv\Scripts\cuti.exe check-urls    # hàng tuần: URL nào còn xem lại được
+.\.venv\Scripts\cuti.exe ingest-lot --url https://www.catawiki.com/en/l/105916285-rolex
+```
+
+- `watch-live` đọc `search` rồi `lots/live` để lấy `bidding_end_time`, ghi vào
+ bảng `live_watch`. Pha này chưa có giá — đúng bản chất đấu giá đang chạy.
+- `settle` chỉ xử lý lot đã quá ngày đóng, đọc `bidding_block` để lấy `is_sold`,
+ `highest_bid_amount`, `bids_count`, đồng thời snapshot `favorite_count` thành
+ `hearts`, rồi xoá lot khỏi `live_watch`.
+- Lot bị Catawiki xoá trước khi chốt được đếm là `vanished`. Title không nói rõ
+ tình trạng được đếm là `unclassified` và bị bỏ, không đoán bừa condition.
+- `check-urls` đặt `source_available = '__NO__'` khi trang lot hết hạn. Redirect
+ về trang category vẫn trả 200 nên phải kiểm tra `/l/{lot_id}` trong URL cuối.
+ Giá đã lưu vẫn dùng làm comparable, chỉ là không xác minh lại được ở nguồn.
+- Nhịp gợi ý: `watch-live` + `settle` mỗi ngày, `check-urls` mỗi Chủ nhật. Giữ
+ `CUTI_CATAWIKI_PAUSE_SECONDS >= 1` và `CUTI_CATAWIKI_BATCH_SIZE = 50`.
+
 ## Luồng quyết định
 
 ```text
@@ -138,8 +163,9 @@ cả hai trước khi hệ thống tạo quote. Audit cũ không có snapshot đ
 src/cuti/
   app.py          Streamlit một trang
   charts.py       ba biểu đồ Plotly
-  pipeline.py     ingest / quote / watch tuyến tính
-  storage.py      SQLite schema v2, FTS5, migration, audit, outbox
+  pipeline.py     ingest / watch-live / settle / quote / watch tuyến tính
+  scrapers/       catawiki_api.py (JSON 2 pha), catawiki.py (HTML), deals.py
+  storage.py      SQLite schema v3, FTS5, live_watch, migration, audit, outbox
   normalize.py    brand/reference/identity/condition và RapidFuzz
   comparables.py  exact gates + fuzzy threshold + time window
   pricing.py      công thức duy nhất
@@ -157,9 +183,13 @@ radius khi tiếp tục phát triển.
 ## Ranh giới YAGNI
 
 - Không Postgres, ORM, Redis, service queue, API riêng, Docker stack, ML hay
-  vector database.
+ vector database.
 - SQLite outbox là một bảng nhỏ để bảo đảm không mất alert, không phải hạ tầng
-  queue riêng.
+ queue riêng.
 - Chưa có daemon/scheduler trong app; production dùng cron hoặc Task Scheduler.
-- Chưa triển khai crawler Catawiki/Facebook thật. Khi làm, chỉ thay adapter đầu
-  vào; normalization, pricing, audit, UI, liquidity và notifier giữ nguyên.
+- Adapter Catawiki thật đã có (`scrapers/catawiki_api.py`, JSON buyer endpoint,
+ stdlib-only). Chưa có Playwright, proxy, hay quét theo dải lot id.
+- Chưa triển khai crawler Facebook/marketplace thật. Khi làm, chỉ thay adapter
+ đầu vào; normalization, pricing, audit, UI, liquidity và notifier giữ nguyên.
+- Không lưu ảnh, không lưu sổ từng lần đấu. Chỉ snapshot `hearts` và
+ `bids_count` tại thời điểm đóng — đủ để đo sức nóng, không phình database.

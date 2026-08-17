@@ -13,7 +13,6 @@ from enum import Enum
 
 from .errors import ScrapeError
 
-
 class Condition(str, Enum):
     """The only four condition clusters the MVP distinguishes."""
 
@@ -29,7 +28,6 @@ class Condition(str, Enum):
         except ValueError as exc:
             allowed = ", ".join(item.value for item in cls)
             raise ScrapeError(f"unknown condition {value!r}; allowed: {allowed}") from exc
-
 
 class WatchForm(str, Enum):
     """Case shape supplied by the source or explicitly selected by the buyer."""
@@ -49,7 +47,6 @@ class WatchForm(str, Enum):
             allowed = ", ".join(item.value for item in cls)
             raise ScrapeError(f"unknown watch form {value!r}; allowed: {allowed}") from exc
 
-
 class Verdict(str, Enum):
     """Traffic-light output of a quote."""
 
@@ -57,7 +54,6 @@ class Verdict(str, Enum):
     YELLOW = "yellow"
     RED = "red"
     INSUFFICIENT_DATA = "insufficient_data"
-
 
 @dataclass(frozen=True, slots=True)
 class Lot:
@@ -76,6 +72,13 @@ class Lot:
     ended_at: date
     url: str
     form: WatchForm = WatchForm.UNKNOWN
+    subtitle: str | None = None
+    # Number of bids at close. Kept for heat analysis; the per-bid ledger is
+    # never stored. None means the source did not report it.
+    bids_count: int | None = None
+    # False once the public lot page no longer resolves. The snapshot stays the
+    # source of truth either way.
+    source_available: bool = True
 
     def __post_init__(self) -> None:
         if not self.lot_id.strip():
@@ -95,11 +98,12 @@ class Lot:
                 )
         elif self.hammer_eur is not None:
             raise ScrapeError(f"{self.lot_id}: an unsold lot must not have a hammer price")
+        if self.bids_count is not None and self.bids_count < 0:
+            raise ScrapeError(f"{self.lot_id}: bids_count must be >= 0, got {self.bids_count}")
 
     @property
     def days_to_close(self) -> int:
         return (self.ended_at - self.opened_at).days
-
 
 @dataclass(frozen=True, slots=True)
 class Deal:

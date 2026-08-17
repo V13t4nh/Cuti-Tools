@@ -30,6 +30,14 @@ DEFAULTS: dict[str, str] = {
     "CUTI_LOTS_SOURCE_URL": "data/sample/catawiki/page-1.html",
     "CUTI_DEALS_SOURCE_URL": "data/sample/deals/deals.json",
     "CUTI_SOURCE_MAX_PAGES": "10",
+    # live auction API (capture open lots, settle them after close)
+    "CUTI_CATAWIKI_API_BASE": "https://www.catawiki.com",
+    "CUTI_CATAWIKI_QUERIES": "watch",
+    "CUTI_CATAWIKI_SEARCH_MAX_PAGES": "5",
+    "CUTI_CATAWIKI_BATCH_SIZE": "50",
+    "CUTI_CATAWIKI_PAUSE_SECONDS": "1.0",
+    "CUTI_SETTLE_MAX_LOTS": "200",
+    "CUTI_URL_CHECK_MAX_LOTS": "200",
     "CUTI_HTTP_TIMEOUT_SECONDS": "20",
     "CUTI_RESPONSE_MAX_BYTES": "5000000",
     # pricing
@@ -67,7 +75,6 @@ DEFAULTS: dict[str, str] = {
 NOTIFIER_KINDS = ("file", "telegram")
 BUSINESS_TIMEZONE = timezone(timedelta(hours=7), name="Asia/Bangkok")
 
-
 def parse_env_file(text: str) -> dict[str, str]:
     """Parse a minimal ``KEY=VALUE`` env file. Unparsable lines are errors."""
     values: dict[str, str] = {}
@@ -89,7 +96,6 @@ def parse_env_file(text: str) -> dict[str, str]:
         values[key] = value
     return values
 
-
 def _resolve_values(env: Mapping[str, str], base_dir: Path) -> dict[str, str]:
     values = dict(DEFAULTS)
     env_file = base_dir / ENV_FILE_NAME
@@ -107,14 +113,12 @@ def _resolve_values(env: Mapping[str, str], base_dir: Path) -> dict[str, str]:
         raise ConfigError(f"unknown CUTI_* variables: {', '.join(unknown)}")
     return values
 
-
 def _as_float(values: Mapping[str, str], key: str) -> float:
     raw = values[key]
     try:
         return float(raw)
     except ValueError as exc:
         raise ConfigError(f"{key}: expected a number, got {raw!r}") from exc
-
 
 def _as_int(values: Mapping[str, str], key: str) -> int:
     raw = values[key]
@@ -123,24 +127,20 @@ def _as_int(values: Mapping[str, str], key: str) -> int:
     except ValueError as exc:
         raise ConfigError(f"{key}: expected an integer, got {raw!r}") from exc
 
-
 def _require_rate(name: str, value: float) -> float:
     if not 0.0 <= value < 1.0:
         raise ConfigError(f"{name}: expected a rate in [0, 1), got {value}")
     return value
-
 
 def _require_positive(name: str, value: float) -> float:
     if not math.isfinite(value) or value <= 0:
         raise ConfigError(f"{name}: expected a value > 0, got {value}")
     return value
 
-
 def _require_non_negative(name: str, value: float) -> float:
     if not math.isfinite(value) or value < 0:
         raise ConfigError(f"{name}: expected a value >= 0, got {value}")
     return value
-
 
 @dataclass(frozen=True, slots=True)
 class Settings:
@@ -152,6 +152,13 @@ class Settings:
     lots_source_url: str
     deals_source_url: str
     source_max_pages: int
+    catawiki_api_base: str
+    catawiki_queries: tuple[str, ...]
+    catawiki_search_max_pages: int
+    catawiki_batch_size: int
+    catawiki_pause_seconds: float
+    settle_max_lots: int
+    url_check_max_lots: int
     http_timeout_seconds: float
     response_max_bytes: int
     commission_rate: float
@@ -184,7 +191,6 @@ class Settings:
         """Fraction of the hammer price kept by the marketplace (fee + VAT)."""
         return self.commission_rate * (1.0 + self.vat_on_commission_rate)
 
-
 def _resolve_location(base_dir: Path, value: str, name: str) -> str:
     """Turn a plain path into an absolute one; leave real URLs untouched."""
     if not value:
@@ -194,13 +200,11 @@ def _resolve_location(base_dir: Path, value: str, name: str) -> str:
     path = Path(value)
     return str(path if path.is_absolute() or value.startswith(("/", "\\")) else (base_dir / path).resolve())
 
-
 def _resolve_path(base_dir: Path, value: str, name: str) -> Path:
     if not value:
         raise ConfigError(f"{name}: must not be empty")
     path = Path(value)
     return path if path.is_absolute() or value.startswith(("/", "\\")) else (base_dir / path).resolve()
-
 
 def load_settings(
     env: Mapping[str, str] | None = None, base_dir: Path | str | None = None
@@ -278,6 +282,39 @@ def load_settings(
         "CUTI_LIQUIDITY_DECLINE_RATE", _as_float(values, "CUTI_LIQUIDITY_DECLINE_RATE")
     )
 
+    catawiki_api_base = values["CUTI_CATAWIKI_API_BASE"].strip().rstrip("/")
+    if not catawiki_api_base.startswith(("http://", "https://")):
+        raise ConfigError(
+            f"CUTI_CATAWIKI_API_BASE: expected an http(s) URL, got {catawiki_api_base!r}"
+        )
+    catawiki_queries = tuple(
+        part.strip() for part in values["CUTI_CATAWIKI_QUERIES"].split(",") if part.strip()
+    )
+    if not catawiki_queries:
+        raise ConfigError("CUTI_CATAWIKI_QUERIES: expected at least one non-empty query")
+    if len(set(catawiki_queries)) != len(catawiki_queries):
+        raise ConfigError(f"CUTI_CATAWIKI_QUERIES: duplicate queries in {catawiki_queries}")
+
+    catawiki_search_max_pages = _as_int(values, "CUTI_CATAWIKI_SEARCH_MAX_PAGES")
+    if catawiki_search_max_pages < 1:
+        raise ConfigError(
+            f"CUTI_CATAWIKI_SEARCH_MAX_PAGES: expected >= 1, got {catawiki_search_max_pages}"
+        )
+
+    catawiki_batch_size = _as_int(values, "CUTI_CATAWIKI_BATCH_SIZE")
+    if not 1 <= catawiki_batch_size <= 100:
+        raise ConfigError(
+            f"CUTI_CATAWIKI_BATCH_SIZE: expected 1..100, got {catawiki_batch_size}"
+        )
+
+    settle_max_lots = _as_int(values, "CUTI_SETTLE_MAX_LOTS")
+    if settle_max_lots < 1:
+        raise ConfigError(f"CUTI_SETTLE_MAX_LOTS: expected >= 1, got {settle_max_lots}")
+
+    url_check_max_lots = _as_int(values, "CUTI_URL_CHECK_MAX_LOTS")
+    if url_check_max_lots < 1:
+        raise ConfigError(f"CUTI_URL_CHECK_MAX_LOTS: expected >= 1, got {url_check_max_lots}")
+
     settings = Settings(
         base_dir=base,
         db_path=_resolve_path(base, values["CUTI_DB_PATH"], "CUTI_DB_PATH"),
@@ -289,6 +326,15 @@ def load_settings(
             base, values["CUTI_DEALS_SOURCE_URL"], "CUTI_DEALS_SOURCE_URL"
         ),
         source_max_pages=max_pages,
+        catawiki_api_base=catawiki_api_base,
+        catawiki_queries=catawiki_queries,
+        catawiki_search_max_pages=catawiki_search_max_pages,
+        catawiki_batch_size=catawiki_batch_size,
+        catawiki_pause_seconds=_require_non_negative(
+            "CUTI_CATAWIKI_PAUSE_SECONDS", _as_float(values, "CUTI_CATAWIKI_PAUSE_SECONDS")
+        ),
+        settle_max_lots=settle_max_lots,
+        url_check_max_lots=url_check_max_lots,
         http_timeout_seconds=_require_positive(
             "CUTI_HTTP_TIMEOUT_SECONDS", _as_float(values, "CUTI_HTTP_TIMEOUT_SECONDS")
         ),

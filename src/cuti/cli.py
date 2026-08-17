@@ -20,7 +20,15 @@ from .liquidity import compute_liquidity
 from .models import Condition, WatchForm
 from .normalize import load_rules
 from .notifier import build_notifier
-from .pipeline import ingest_lots, quote_watch, watch_deals
+from .pipeline import (
+    check_source_urls,
+    ingest_lots,
+    ingest_one_lot,
+    quote_watch,
+    settle_lots,
+    watch_deals,
+    watch_live,
+)
 from .report import write_report
 from .storage import count_rows, fetch_quote_audit, open_db, outbox_counts
 
@@ -28,13 +36,11 @@ EXIT_OK = 0
 EXIT_ERROR = 1
 EXIT_USAGE = 2
 
-
 def _parse_day(value: str) -> date:
     try:
         return date.fromisoformat(value)
     except ValueError as exc:
         raise argparse.ArgumentTypeError(f"expected YYYY-MM-DD, got {value!r}") from exc
-
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cuti", description="CUTI-Tools watch arbitrage MVP")
@@ -45,6 +51,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("init-db", help="create the SQLite schema")
     sub.add_parser("ingest", help="crawl the auction source into SQLite")
+
+    # Live auction capture: hammer prices exist only for lots we tracked while
+    # they were open, so `watch-live` must run before `settle` has anything to do.
+    sub.add_parser("watch-live", help="queue the lots that are open right now")
+    sub.add_parser("settle", help="read the hammer price of queued lots that closed")
+    sub.add_parser("check-urls", help="flag stored lots whose source page expired")
+    ingest_lot_cmd = sub.add_parser("ingest-lot", help="track and settle a single lot URL")
+    ingest_lot_cmd.add_argument("--url", required=True, help="source lot URL")
 
     quote_cmd = sub.add_parser("quote", help="price one watch against comparables")
     quote_cmd.add_argument("--title", required=True)
@@ -70,13 +84,11 @@ def build_parser() -> argparse.ArgumentParser:
     audit_cmd.add_argument("--quote-id", required=True, type=int)
     return parser
 
-
 def _emit(payload: dict[str, object], as_json: bool, lines: Sequence[str]) -> None:
     if as_json:
         print(json.dumps(payload, indent=2, sort_keys=True, default=str))
     else:
         print("\n".join(lines))
-
 
 def run(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
@@ -109,6 +121,77 @@ def run(argv: Sequence[str] | None = None) -> int:
                     f"Lots written  : {report.lots_written}",
                     f"Lots in db    : {count_rows(conn, 'lots')}",
                     f"Stopped       : {report.stopped_reason}",
+                ],
+            )
+        elif args.command == "watch-live":
+            live = watch_live(conn, settings, now)
+            _emit(
+                {
+                    "queries": list(live.queries),
+                    "pages_fetched": live.pages_fetched,
+                    "lots_seen": live.lots_seen,
+                    "lots_tracked": live.lots_tracked,
+                    "lots_refreshed": live.lots_refreshed,
+                    "windows_unknown": live.windows_unknown,
+                    "requests_made": live.requests_made,
+                    "queue_total": count_rows(conn, "live_watch"),
+                },
+                args.json,
+                [
+                    f"Queries       : {', '.join(live.queries)}",
+                    f"Pages fetched : {live.pages_fetched}",
+                    f"Lots seen     : {live.lots_seen}",
+                    f"Newly queued  : {live.lots_tracked}",
+                    f"Refreshed     : {live.lots_refreshed}",
+                    f"Unknown end   : {live.windows_unknown}",
+                    f"Requests      : {live.requests_made}",
+                    f"Queue total   : {count_rows(conn, 'live_watch')}",
+                ],
+            )
+        elif args.command in {"settle", "ingest-lot"}:
+            if args.command == "settle":
+                settled = settle_lots(conn, rules, settings, today, now)
+            else:
+                settled = ingest_one_lot(conn, rules, settings, today, now, url=args.url)
+            _emit(
+                {
+                    "candidates": settled.candidates,
+                    "sold": settled.sold,
+                    "unsold": settled.unsold,
+                    "still_open": settled.still_open,
+                    "vanished": settled.vanished,
+                    "unclassified": settled.unclassified,
+                    "lots_written": settled.lots_written,
+                    "queue_remaining": settled.queue_remaining,
+                    "requests_made": settled.requests_made,
+                    "lots_total": count_rows(conn, "lots"),
+                },
+                args.json,
+                [
+                    f"Candidates    : {settled.candidates}",
+                    f"Sold          : {settled.sold}",
+                    f"Unsold        : {settled.unsold}",
+                    f"Still open    : {settled.still_open}",
+                    f"Vanished      : {settled.vanished}",
+                    f"Unclassified  : {settled.unclassified}",
+                    f"Lots written  : {settled.lots_written}",
+                    f"Queue left    : {settled.queue_remaining}",
+                    f"Requests      : {settled.requests_made}",
+                ],
+            )
+        elif args.command == "check-urls":
+            checked = check_source_urls(conn, settings, now)
+            _emit(
+                {
+                    "checked": checked.checked,
+                    "alive": checked.alive,
+                    "dead": checked.dead,
+                },
+                args.json,
+                [
+                    f"Checked       : {checked.checked}",
+                    f"Still alive   : {checked.alive}",
+                    f"Expired       : {checked.dead}",
                 ],
             )
         elif args.command == "quote":
@@ -145,11 +228,11 @@ def run(argv: Sequence[str] | None = None) -> int:
                 },
                 args.json,
                 [
-                    f"Model      : {report.model_key} ({report.condition.value}/{report.form.value})",
-                    f"Verdict    : {price.verdict.value.upper()}",
-                    f"Sample     : {price.sample_size}/{price.attempt_count} sold/attempts",
-                    f"Cost       : {price.cost_eur:,.0f} EUR",
-                    f"Threshold  : {price.threshold_eur:,.0f} EUR",
+                    f"Model    : {report.model_key} ({report.condition.value}/{report.form.value})",
+                    f"Verdict  : {price.verdict.value.upper()}",
+                    f"Sample   : {price.sample_size}/{price.attempt_count} sold/attempts",
+                    f"Cost     : {price.cost_eur:,.0f} EUR",
+                    f"Threshold: {price.threshold_eur:,.0f} EUR",
                     "Net p25/med/p75: "
                     + (
                         "n/a"
@@ -246,6 +329,7 @@ def run(argv: Sequence[str] | None = None) -> int:
                 "base_dir": str(settings.base_dir),
                 "db_path": str(settings.db_path),
                 "lots": count_rows(conn, "lots"),
+                "live_watch": count_rows(conn, "live_watch"),
                 "deals": count_rows(conn, "deals"),
                 "quotes": count_rows(conn, "quotes"),
                 "quote_comparables": count_rows(conn, "quote_comparables"),
@@ -262,7 +346,6 @@ def run(argv: Sequence[str] | None = None) -> int:
             parser.error(f"unknown command {args.command!r}")
     return EXIT_OK
 
-
 def main(argv: Sequence[str] | None = None) -> int:
     try:
         return run(argv)
@@ -272,7 +355,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     except argparse.ArgumentError as exc:  # pragma: no cover - argparse exits itself
         print(f"usage error: {exc}", file=sys.stderr)
         return EXIT_USAGE
-
 
 if __name__ == "__main__":
     raise SystemExit(main())
