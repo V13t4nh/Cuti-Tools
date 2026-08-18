@@ -154,7 +154,7 @@ class WatchLiveTests(LiveWatchTestCase):
                 "2": state("2", closed=False, ended=date(2026, 8, 21)),
             },
         )
-        with storage.open_db(self.settings.db_path) as conn:
+        with storage.connect(self.settings.db_path) as conn:
             report = watch_live(conn, self.settings, NOW, api=fake)
             self.assertEqual((report.lots_seen, report.lots_tracked), (2, 2))
             self.assertEqual(report.windows_unknown, 0)
@@ -170,7 +170,7 @@ class WatchLiveTests(LiveWatchTestCase):
             pages={("watch", 1): page},
             states={"1": state("1", closed=False, ended=date(2026, 8, 20))},
         )
-        with storage.open_db(self.settings.db_path) as conn:
+        with storage.connect(self.settings.db_path) as conn:
             watch_live(conn, self.settings, NOW, api=fake)
             again = watch_live(conn, self.settings, NOW, api=fake)
             self.assertEqual((again.lots_tracked, again.lots_refreshed), (0, 1))
@@ -181,7 +181,7 @@ class WatchLiveTests(LiveWatchTestCase):
             pages={("watch", 1): api.SearchPage(total=1, lots=(ref("1", ROLEX),))},
             states={"1": state("1", closed=True)},
         )
-        with storage.open_db(self.settings.db_path) as conn:
+        with storage.connect(self.settings.db_path) as conn:
             report = watch_live(conn, self.settings, NOW, api=fake)
             self.assertEqual(report.windows_unknown, 1)
             due = storage.fetch_live_watch_due(conn, until=TODAY, limit=10)
@@ -193,7 +193,7 @@ class WatchLiveTests(LiveWatchTestCase):
             pages={("watch", 1): api.SearchPage(total=5, lots=lots)},
             states={str(index): state(str(index), closed=False) for index in range(1, 6)},
         )
-        with storage.open_db(self.settings.db_path) as conn:
+        with storage.connect(self.settings.db_path) as conn:
             watch_live(conn, self.settings, NOW, api=fake)
         self.assertEqual(
             [len(batch) for batch in fake.state_batches],
@@ -207,7 +207,7 @@ class SettleTests(LiveWatchTestCase):
             states={"1": state("1", hearts=42)},
             outcomes={"1": outcome("1", hammer=1401, bids=17)},
         )
-        with storage.open_db(self.settings.db_path) as conn:
+        with storage.connect(self.settings.db_path) as conn:
             self.queue(conn, "1", ROLEX, date(2026, 8, 10))
             report = settle_lots(conn, self.rules, self.settings, TODAY, NOW, api=fake)
             self.assertEqual((report.sold, report.unsold, report.lots_written), (1, 0, 1))
@@ -233,7 +233,7 @@ class SettleTests(LiveWatchTestCase):
         fake = FakeApi(
             states={"1": state("1")}, outcomes={"1": outcome("1", sold=False, bids=0)}
         )
-        with storage.open_db(self.settings.db_path) as conn:
+        with storage.connect(self.settings.db_path) as conn:
             self.queue(conn, "1", ROLEX, date(2026, 8, 10))
             report = settle_lots(conn, self.rules, self.settings, TODAY, NOW, api=fake)
             self.assertEqual((report.sold, report.unsold), (0, 1))
@@ -244,7 +244,7 @@ class SettleTests(LiveWatchTestCase):
 
     def test_extended_auction_is_requeued_with_the_new_end_date(self) -> None:
         fake = FakeApi(states={"1": state("1", closed=False, ended=date(2026, 8, 25))})
-        with storage.open_db(self.settings.db_path) as conn:
+        with storage.connect(self.settings.db_path) as conn:
             self.queue(conn, "1", ROLEX, date(2026, 8, 10))
             report = settle_lots(conn, self.rules, self.settings, TODAY, NOW, api=fake)
             self.assertEqual((report.still_open, report.lots_written), (1, 0))
@@ -254,7 +254,7 @@ class SettleTests(LiveWatchTestCase):
 
     def test_lot_forgotten_by_the_source_is_dropped(self) -> None:
         fake = FakeApi(states={})
-        with storage.open_db(self.settings.db_path) as conn:
+        with storage.connect(self.settings.db_path) as conn:
             self.queue(conn, "1", ROLEX, date(2026, 8, 10))
             report = settle_lots(conn, self.rules, self.settings, TODAY, NOW, api=fake)
             self.assertEqual((report.vanished, report.queue_remaining), (1, 0))
@@ -265,7 +265,7 @@ class SettleTests(LiveWatchTestCase):
             states={"1": state("1"), "2": state("2")},
             outcomes={"1": outcome("1"), "2": outcome("2")},
         )
-        with storage.open_db(self.settings.db_path) as conn:
+        with storage.connect(self.settings.db_path) as conn:
             self.queue(conn, "1", "Unknownbrand - Mystery watch - full set", date(2026, 8, 10))
             self.queue(conn, "2", "Rolex - Submariner Date - 16610 - Men", date(2026, 8, 10))
             report = settle_lots(conn, self.rules, self.settings, TODAY, NOW, api=fake)
@@ -284,7 +284,7 @@ class SettleTests(LiveWatchTestCase):
             states={"1": state("1"), "2": state("2")},
             outcomes={"1": outcome("1"), "2": outcome("2")},
         )
-        with storage.open_db(settings.db_path) as conn:
+        with storage.connect(settings.db_path) as conn:
             self.queue(conn, "1", ROLEX, date(2026, 8, 9))
             self.queue(conn, "2", ROLEX, date(2026, 8, 10))
             report = settle_lots(conn, self.rules, settings, TODAY, NOW, api=fake)
@@ -299,7 +299,7 @@ class IngestOneLotTests(LiveWatchTestCase):
             outcomes={"1": outcome("1")},
             titles={"1": api.LotTitle(lot_id="1", title=ROLEX, url=url)},
         )
-        with storage.open_db(self.settings.db_path) as conn:
+        with storage.connect(self.settings.db_path) as conn:
             report = ingest_one_lot(
                 conn, self.rules, self.settings, TODAY, NOW, url=url, api=fake
             )
@@ -310,7 +310,7 @@ class IngestOneLotTests(LiveWatchTestCase):
         from cuti.errors import ScrapeError
 
         fake = FakeApi(titles={})
-        with storage.open_db(self.settings.db_path) as conn:
+        with storage.connect(self.settings.db_path) as conn:
             with self.assertRaises(ScrapeError):
                 ingest_one_lot(
                     conn,
@@ -350,7 +350,7 @@ class SourceUrlCheckTests(LiveWatchTestCase):
         def probe(url: str, timeout: float) -> tuple[int, str]:
             return 200, url
 
-        with storage.open_db(self.settings.db_path) as conn:
+        with storage.connect(self.settings.db_path) as conn:
             self.store_lot(conn, "1")
             report = check_source_urls(conn, self.settings, NOW, probe=probe)
             self.assertEqual((report.checked, report.alive, report.dead), (1, 1, 0))
@@ -365,7 +365,7 @@ class SourceUrlCheckTests(LiveWatchTestCase):
         def probe(url: str, timeout: float) -> tuple[int, str]:
             return 200, "https://www.catawiki.com/en/c/333-watches"
 
-        with storage.open_db(self.settings.db_path) as conn:
+        with storage.connect(self.settings.db_path) as conn:
             self.store_lot(conn, "1")
             report = check_source_urls(conn, self.settings, NOW, probe=probe)
             self.assertEqual((report.alive, report.dead), (0, 1))
@@ -378,7 +378,7 @@ class SourceUrlCheckTests(LiveWatchTestCase):
         def probe(url: str, timeout: float) -> tuple[int, str]:
             return 404, url
 
-        with storage.open_db(self.settings.db_path) as conn:
+        with storage.connect(self.settings.db_path) as conn:
             self.store_lot(conn, "1")
             check_source_urls(conn, self.settings, NOW, probe=probe)
             self.assertEqual(
@@ -394,7 +394,7 @@ class SourceUrlCheckTests(LiveWatchTestCase):
             calls.append(url)
             return 404, url
 
-        with storage.open_db(self.settings.db_path) as conn:
+        with storage.connect(self.settings.db_path) as conn:
             self.store_lot(conn, "1")
             check_source_urls(conn, self.settings, NOW, probe=probe)
             check_source_urls(conn, self.settings, NOW, probe=probe)
@@ -422,7 +422,7 @@ class MigrationTests(unittest.TestCase):
         legacy.commit()
         legacy.close()
 
-        with storage.open_db(tmp) as conn:
+        with storage.connect(tmp) as conn:
             version = conn.execute(
                 "SELECT value FROM schema_meta WHERE key='version'"
             ).fetchone()[0]
@@ -439,7 +439,7 @@ class MigrationTests(unittest.TestCase):
 
     def test_reopening_a_current_database_is_a_no_op(self) -> None:
         tmp = Path(tempfile.mkdtemp()) / "twice.db"
-        with storage.open_db(tmp) as conn:
+        with storage.connect(tmp) as conn:
             storage.upsert_live_watch(
                 conn,
                 [
@@ -454,7 +454,7 @@ class MigrationTests(unittest.TestCase):
                 ],
                 NOW,
             )
-        with storage.open_db(tmp) as conn:
+        with storage.connect(tmp) as conn:
             self.assertEqual(storage.count_live_watch(conn), 1)
 
 class CliWiringTests(unittest.TestCase):

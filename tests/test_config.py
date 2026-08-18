@@ -100,7 +100,7 @@ class SettingsTests(ProjectTestCase):
             self.make_settings(CUTI_MIN_COMPARABLES="0")
 
     def test_rejects_match_threshold_out_of_range(self) -> None:
-        for value in ("0", "1.5"):
+        for value in ("0", "100.5"):
             with self.subTest(value=value), self.assertRaises(ConfigError):
                 self.make_settings(CUTI_MATCH_THRESHOLD=value)
 

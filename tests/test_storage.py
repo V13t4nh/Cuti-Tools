@@ -7,7 +7,7 @@ import unittest
 from datetime import date
 
 from cuti.errors import ScrapeError, StorageError
-from cuti.models import Condition, Deal, Lot
+from cuti.models import Condition, Deal, Lot, WatchForm
 from cuti.storage import (
     claim_pending_alerts,
     count_rows,
@@ -100,6 +100,8 @@ class StorageTests(ProjectTestCase):
         found = search_sold_lots(
             self.conn,
             fts_query='"210.30.42"',
+            brand="omega",
+            model_key="omega:210.30.42",
             condition_tag=Condition.NAKED,
             since=date(2020, 1, 1),
             limit=10,
@@ -119,6 +121,8 @@ class StorageTests(ProjectTestCase):
             search_sold_lots(
                 self.conn,
                 fts_query='"210.30.42"',
+                brand="omega",
+                model_key="omega:210.30.42",
                 condition_tag=Condition.NAKED,
                 since=date(2020, 1, 1),
                 limit=10,
@@ -131,6 +135,8 @@ class StorageTests(ProjectTestCase):
             search_sold_lots(
                 self.conn,
                 fts_query='"124060"',
+                brand="rolex",
+                model_key="rolex:124060",
                 condition_tag=Condition.NAKED,
                 since=date(2020, 1, 1),
                 limit=10,
@@ -149,6 +155,8 @@ class StorageTests(ProjectTestCase):
         found = search_sold_lots(
             self.conn,
             fts_query='"210.30.42" OR "omega"',
+            brand="omega",
+            model_key="omega:210.30.42",
             condition_tag=Condition.NAKED,
             since=date(2026, 1, 1),
             limit=10,
@@ -160,6 +168,8 @@ class StorageTests(ProjectTestCase):
             search_sold_lots(
                 self.conn,
                 fts_query='"omega"',
+                brand="omega",
+                model_key=None,
                 condition_tag=Condition.NAKED,
                 since=date(2020, 1, 1),
                 limit=0,
@@ -217,15 +227,25 @@ class StorageTests(ProjectTestCase):
             self.conn,
             model_key="omega:210.30.42",
             condition_tag=Condition.BOX,
+            form=WatchForm.ROUND,
             title="Omega",
             cost_vnd=1_000_000,
             sample_size=0,
+            attempt_count=0,
+            sell_through_rate=0.0,
             net_min_eur=None,
             net_avg_eur=None,
             net_max_eur=None,
+            hammer_p25_eur=None,
+            hammer_median_eur=None,
+            hammer_p75_eur=None,
+            median_days_to_close=None,
             threshold_eur=50.0,
             verdict="insufficient_data",
+            assumptions={"audit_version": 0, "legacy_snapshot": "unavailable"},
+            comparables=(),
             deal_id=None,
+            alert_payload=None,
             now=NOW,
         )
         self.assertGreater(quote_id, 0)
@@ -239,14 +259,23 @@ class StorageTests(ProjectTestCase):
             self.conn,
             model_key="omega:210.30.42",
             condition_tag=Condition.BOX,
+            form=WatchForm.ROUND,
             title="Omega",
             cost_vnd=1_000_000,
             sample_size=0,
+            attempt_count=0,
+            sell_through_rate=0.0,
             net_min_eur=None,
             net_avg_eur=None,
             net_max_eur=None,
+            hammer_p25_eur=None,
+            hammer_median_eur=None,
+            hammer_p75_eur=None,
+            median_days_to_close=None,
             threshold_eur=50.0,
             verdict="green",
+            assumptions={"audit_version": 0, "legacy_snapshot": "unavailable"},
+            comparables=(),
             alert_payload={"title": "Omega"},
             deal_id=None,
             now=NOW,
@@ -259,19 +288,28 @@ class StorageTests(ProjectTestCase):
             self.conn,
             model_key="omega:210.30.42",
             condition_tag=Condition.BOX,
+            form=WatchForm.ROUND,
             title="Omega",
             cost_vnd=1_000_000,
             sample_size=0,
+            attempt_count=0,
+            sell_through_rate=0.0,
             net_min_eur=None,
             net_avg_eur=None,
             net_max_eur=None,
+            hammer_p25_eur=None,
+            hammer_median_eur=None,
+            hammer_p75_eur=None,
+            median_days_to_close=None,
             threshold_eur=50.0,
             verdict="green",
+            assumptions={"audit_version": 0, "legacy_snapshot": "unavailable"},
+            comparables=(),
             alert_payload={"title": "Omega"},
             deal_id=None,
             now=NOW,
         )
-        self.conn.execute("UPDATE alert_outbox SET payload_json='[]'")
+        self.conn.execute("UPDATE alert_outbox SET payload='[]'")
 
         with self.assertRaises(StorageError):
             claim_pending_alerts(self.conn, NOW)
@@ -284,10 +322,10 @@ class StorageTests(ProjectTestCase):
             self.conn.execute(
                 """
                 INSERT INTO lots (lot_id, source, title, brand, model_key, condition_tag,
-                                  hearts, sold, hammer_eur, opened_at, ended_at,
-                                  days_to_close, url, ingested_at)
-                VALUES ('bad', 's', 't', 'b', 'm', 'unknown-condition', 1, 1, 10,
-                        '2026-01-01', '2026-01-02', 1, 'u', '2026-01-02')
+                                  form, hearts, sold, hammer_eur, opened_at, ended_at,
+                                  url, source_available, updated_at)
+                VALUES ('bad', 's', 't', 'b', 'm', 'unknown-condition', 'round', 1, 1, 10,
+                        '2026-01-01', '2026-01-02', 'u', '__YES__', '2026-01-02')
                 """
             )
 

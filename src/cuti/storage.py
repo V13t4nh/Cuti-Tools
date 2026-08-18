@@ -7,13 +7,12 @@ a single transaction so partial writes are never observable.
 
 from __future__ import annotations
 
-import contextlib
 import json
 import sqlite3
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Iterable
 
 from .errors import StorageError
 from .models import Condition, Deal, Lot, WatchForm
@@ -47,8 +46,8 @@ CREATE TABLE IF NOT EXISTS lots (
     title TEXT NOT NULL,
     brand TEXT NOT NULL,
     model_key TEXT NOT NULL,
-    condition_tag TEXT NOT NULL,
-    form TEXT NOT NULL DEFAULT 'unknown',
+    condition_tag TEXT NOT NULL CHECK (condition_tag IN ('naked', 'box', 'papers', 'fullset')),
+    form TEXT NOT NULL DEFAULT 'unknown' CHECK (form IN ('round', 'rectangular', 'square', 'tonneau', 'other', 'unknown')),
     hearts INTEGER NOT NULL,
     sold INTEGER NOT NULL,
     hammer_eur INTEGER,
@@ -178,7 +177,7 @@ def _current_version(conn: sqlite3.Connection) -> int:
         "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_meta'"
     ).fetchone()
     if has_meta is None:
-        return 0
+        return int(conn.execute("PRAGMA user_version").fetchone()[0])
     row = conn.execute(
         "SELECT value FROM schema_meta WHERE key = 'version'"
     ).fetchone()
@@ -192,7 +191,55 @@ def _migrate(conn: sqlite3.Connection) -> None:
             "INSERT INTO schema_meta(key, value) VALUES ('version', ?)",
             (str(SCHEMA_VERSION),),
         )
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     elif current < SCHEMA_VERSION:
+        lots_columns = _table_columns(conn, "lots")
+        quotes_columns = _table_columns(conn, "quotes")
+        if "model_key" not in lots_columns or (
+            quotes_columns and "assumptions" not in quotes_columns
+        ):
+            legacy_quotes = (
+                conn.execute("SELECT id, deal_id, sample_size FROM quotes").fetchall()
+                if quotes_columns
+                else []
+            )
+            conn.executescript(
+                """
+                DROP TABLE IF EXISTS alert_outbox;
+                DROP TABLE IF EXISTS quote_comparables;
+                DROP TABLE IF EXISTS quotes;
+                DROP TABLE IF EXISTS deals;
+                DROP TABLE IF EXISTS lots;
+                DROP TABLE IF EXISTS schema_meta;
+                """
+            )
+            conn.executescript(SCHEMA_SQL)
+            timestamp = datetime.now(timezone.utc).isoformat()
+            for row in legacy_quotes:
+                sample_size = int(row[2] or 0)
+                conn.execute(
+                    """INSERT INTO quotes (
+                        id, deal_id, model_key, condition_tag, form, title, cost_vnd,
+                        sample_size, attempt_count, sell_through_rate, net_min_eur,
+                        net_avg_eur, net_max_eur, hammer_p25_eur, hammer_median_eur,
+                        hammer_p75_eur, median_days_to_close, threshold_eur, verdict,
+                        assumptions, created_at
+                    ) VALUES (?, ?, 'legacy:unknown', 'naked', 'unknown', 'legacy', 0,
+                        ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0,
+                        'insufficient_data', ?, ?)""",
+                    (
+                        row[0], row[1], sample_size, sample_size,
+                        1.0 if sample_size else 0.0,
+                        json.dumps({"audit_version": 1, "legacy_snapshot": "unavailable"}, sort_keys=True),
+                        timestamp,
+                    ),
+                )
+            conn.execute(
+                "INSERT INTO schema_meta(key, value) VALUES ('version', ?)",
+                (str(SCHEMA_VERSION),),
+            )
+            conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            return
         # Every migration so far is additive: new tables plus new columns on
         # `lots`. Columns come first: the FTS triggers created by SCHEMA_SQL read
         # columns such as `form`, so creating them against an older `lots` table
@@ -202,11 +249,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute(
             "UPDATE schema_meta SET value = ? WHERE key = 'version'", (str(SCHEMA_VERSION),)
         )
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     elif current > SCHEMA_VERSION:
         raise StorageError(f"database schema version {current} is newer than supported ({SCHEMA_VERSION})")
 
-@contextlib.contextmanager
-def open_db(path: Path) -> Iterator[sqlite3.Connection]:
+def connect(path: Path) -> sqlite3.Connection:
     """Open (creating if needed) the SQLite database with sane pragmas."""
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
@@ -215,11 +262,14 @@ def open_db(path: Path) -> Iterator[sqlite3.Connection]:
         conn.execute("PRAGMA journal_mode = WAL")
         with conn:
             _migrate(conn)
-        yield conn
-    except sqlite3.DatabaseError as exc:
-        raise StorageError(f"database error: {exc}") from exc
-    finally:
+        conn.row_factory = sqlite3.Row
+        return conn
+    except StorageError:
         conn.close()
+        raise
+    except sqlite3.DatabaseError as exc:
+        conn.close()
+        raise StorageError(f"database error: {exc}") from exc
 
 def _row_to_lot(row: sqlite3.Row) -> Lot:
     return Lot(
@@ -313,7 +363,7 @@ def fetch_sold_lots_since(
     ).fetchall()
     return [_row_to_lot(row) for row in rows]
 
-def search_comparable_candidates(
+def search_sold_lots(
     conn: sqlite3.Connection,
     *,
     fts_query: str,
@@ -321,12 +371,17 @@ def search_comparable_candidates(
     model_key: str | None,
     condition_tag: Condition,
     since: date,
+    limit: int | None = None,
+    include_unsold: bool = False,
 ) -> list[Lot]:
-    """FTS5 prefilter, optionally narrowed to an exact model_key."""
+    """Search sold lots, optionally retaining unsold attempts for pricing."""
     _with_row_factory(conn)
     if not fts_query.strip():
         return []
+    if limit is not None and limit <= 0:
+        raise StorageError(f"limit must be positive, got {limit}")
     params: list[object] = [fts_query, brand, condition_tag.value, since.isoformat()]
+    sold_clause = "" if include_unsold else " AND l.sold = 1"
     model_clause = ""
     if model_key is not None:
         model_clause = " AND l.model_key = ?"
@@ -336,10 +391,12 @@ def search_comparable_candidates(
         SELECT l.* FROM lots l
         JOIN lots_fts f ON f.rowid = l.rowid
         WHERE lots_fts MATCH ? AND l.brand = ? AND l.condition_tag = ? AND l.ended_at >= ?
+        {sold_clause}
         {model_clause}
         ORDER BY l.ended_at DESC
+        {"LIMIT ?" if limit is not None else ""}
         """,
-        params,
+        [*params, *([limit] if limit is not None else [])],
     ).fetchall()
     return [_row_to_lot(row) for row in rows]
 
@@ -361,27 +418,23 @@ def _row_to_deal(row: sqlite3.Row) -> Deal:
         dedupe_hash=row["dedupe_hash"],
     )
 
-def insert_deals_if_new(
-    conn: sqlite3.Connection, deals: Iterable[Deal], now: datetime
-) -> list[int]:
-    inserted: list[int] = []
+def insert_deal_if_new(
+    conn: sqlite3.Connection, deal: Deal, now: datetime
+) -> int | None:
     timestamp = _utcnow(now)
     with conn:
-        for deal in deals:
-            cursor = conn.execute(
-                """INSERT OR IGNORE INTO deals (
-                    source, raw_title, ask_vnd, url, seen_at, model_key,
-                    condition_tag, form, dedupe_hash, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    deal.source, deal.raw_title, deal.ask_vnd, deal.url,
-                    deal.seen_at.isoformat(), deal.model_key, deal.condition_tag.value,
-                    deal.form.value, deal.dedupe_hash, timestamp,
-                ),
-            )
-            if cursor.rowcount:
-                inserted.append(cursor.lastrowid)
-    return inserted
+        cursor = conn.execute(
+            """INSERT OR IGNORE INTO deals (
+                source, raw_title, ask_vnd, url, seen_at, model_key,
+                condition_tag, form, dedupe_hash, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                deal.source, deal.raw_title, deal.ask_vnd, deal.url,
+                deal.seen_at.isoformat(), deal.model_key, deal.condition_tag.value,
+                deal.form.value, deal.dedupe_hash, timestamp,
+            ),
+        )
+    return cursor.lastrowid if cursor.rowcount else None
 
 def fetch_unquoted_deals(
     conn: sqlite3.Connection, *, since: date, until: date
@@ -453,6 +506,7 @@ def insert_quote(
                         {
                             "lot_id": item.lot.lot_id,
                             "title": item.lot.title,
+                            "model_key": item.lot.model_key,
                             "hammer_eur": item.lot.hammer_eur,
                             "sold": item.lot.sold,
                             "ended_at": item.lot.ended_at.isoformat(),
@@ -467,6 +521,7 @@ def insert_quote(
         if deal_id is not None:
             conn.execute("UPDATE deals SET quoted = 1 WHERE id = ?", (deal_id,))
         if alert_payload is not None:
+            alert_payload = {**alert_payload, "quote_id": quote_id}
             conn.execute(
                 """INSERT INTO alert_outbox (quote_id, payload, status, created_at)
                    VALUES (?, ?, 'pending', ?)""",
@@ -482,29 +537,33 @@ class PendingAlert:
 
 def claim_pending_alerts(conn: sqlite3.Connection, now: datetime) -> list[PendingAlert]:
     _with_row_factory(conn)
-    timestamp = _utcnow(now)
-    with conn:
-        rows = conn.execute(
-            "SELECT id, quote_id, payload FROM alert_outbox WHERE status = 'pending'"
-        ).fetchall()
-        ids = [row["id"] for row in rows]
-        if ids:
-            placeholders = ",".join("?" * len(ids))
+    rows = conn.execute(
+        "SELECT id, quote_id, payload FROM alert_outbox WHERE status = 'pending'"
+    ).fetchall()
+    alerts = []
+    for row in rows:
+        payload = json.loads(row["payload"])
+        if not isinstance(payload, dict):
+            raise StorageError(f"alert {row['id']} payload must be an object")
+        alerts.append(PendingAlert(id=row["id"], quote_id=row["quote_id"], payload=payload))
+    ids = [row["id"] for row in rows]
+    if ids:
+        placeholders = ",".join("?" * len(ids))
+        with conn:
             conn.execute(
                 f"UPDATE alert_outbox SET status = 'sending' WHERE id IN ({placeholders})",
                 ids,
             )
-    return [
-        PendingAlert(id=row["id"], quote_id=row["quote_id"], payload=json.loads(row["payload"]))
-        for row in rows
-    ]
+    return alerts
 
 def mark_alert_sent(conn: sqlite3.Connection, alert_id: int, now: datetime) -> None:
     with conn:
-        conn.execute(
-            "UPDATE alert_outbox SET status = 'sent', sent_at = ? WHERE id = ?",
+        cursor = conn.execute(
+            "UPDATE alert_outbox SET status = 'sent', sent_at = ? WHERE id = ? AND status = 'sending'",
             (_utcnow(now), alert_id),
         )
+        if cursor.rowcount != 1:
+            raise StorageError(f"alert {alert_id} was not claimed")
 
 def mark_alert_failed(
     conn: sqlite3.Connection, alert_id: int, error: str, *, max_attempts: int
@@ -565,6 +624,7 @@ def fetch_quote_audit(conn: sqlite3.Connection, quote_id: int) -> dict[str, obje
             {
                 "lot_id": row["lot_id"],
                 "score": row["score"],
+                "model_key": json.loads(row["snapshot"]).get("model_key"),
                 "snapshot": json.loads(row["snapshot"]),
             }
             for row in comparable_rows

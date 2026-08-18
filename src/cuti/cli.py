@@ -30,7 +30,7 @@ from .pipeline import (
     watch_live,
 )
 from .report import write_report
-from .storage import count_rows, fetch_quote_audit, open_db, outbox_counts
+from .storage import connect, count_rows, fetch_quote_audit, outbox_counts
 
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -99,7 +99,7 @@ def run(argv: Sequence[str] | None = None) -> int:
     settings = load_settings(base_dir=args.home)
     rules = load_rules(settings.rules_path)
 
-    with open_db(settings.db_path) as conn:
+    with connect(settings.db_path) as conn:
         if args.command == "init-db":
             _emit(
                 {"db_path": str(settings.db_path), "status": "ready"},

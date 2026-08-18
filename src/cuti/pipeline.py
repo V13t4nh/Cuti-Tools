@@ -27,7 +27,7 @@ from .storage import (
     fetch_live_watch_due,
     fetch_lots_for_source_check,
     fetch_unquoted_deals,
-    insert_deals_if_new,
+    insert_deal_if_new,
     insert_quote,
     mark_alert_failed,
     mark_alert_sent,
@@ -337,7 +337,9 @@ def watch_deals(
                 )
             )
 
-        new_count = len(insert_deals_if_new(conn, prepared, now))
+        new_count = sum(
+            insert_deal_if_new(conn, deal, now) is not None for deal in prepared
+        )
 
         quoted = 0
         verdicts: list[tuple[str, Verdict]] = []

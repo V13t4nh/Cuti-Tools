@@ -21,6 +21,8 @@ python -m venv .venv
 `init-db → ingest → quote → watch → liquidity → report` trên một thư mục riêng
 trong `var/verify/`. Script không xóa database hay artifact có sẵn.
 
+`CUTI_MATCH_THRESHOLD` dùng thang phần trăm 0–100 (mặc định `85`).
+
 ## Chạy công cụ với dữ liệu mẫu
 
 ```powershell
@@ -73,7 +75,7 @@ lot cũ sẽ hết hạn sau vài tháng. Vì vậy giá búa chỉ lấy đư�
 
 ```text
 nguồn → parse/preflight toàn batch → normalize → SQLite
-      → exact brand/model identity/condition → RapidFuzz >= ngưỡng
+      → exact brand/model identity/condition → SequenceMatcher >= ngưỡng
       → sold prices + tổng attempts
       → pricing p25/median/p75 → snapshot audit
       → SQLite outbox → file hoặc Telegram

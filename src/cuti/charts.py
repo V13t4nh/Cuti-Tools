@@ -3,16 +3,29 @@
 from __future__ import annotations
 
 import sqlite3
+import json
 from collections import defaultdict
 from datetime import date, timedelta
-from typing import Iterable
-
-import plotly.graph_objects as go
+from typing import Any, Iterable
 
 from .config import Settings
 from .models import Condition, Lot
 from .pricing import percentile
 from .storage import fetch_lots_for_liquidity, fetch_lots_for_model
+
+
+class _FallbackFigure:
+    """Minimal serializable figure for source-only verification.
+
+    The optional Plotly path remains unchanged when the UI extra is installed;
+    this keeps analytics tests importable on the stdlib-only runtime.
+    """
+
+    def __init__(self, chart_type: str) -> None:
+        self.data = ({"type": chart_type},)
+
+    def to_json(self) -> str:
+        return json.dumps({"data": self.data}, sort_keys=True)
 
 
 def model_lots(
@@ -38,8 +51,13 @@ def brand_lots(
     ]
 
 
-def price_histogram(lots: Iterable[Lot], cost_eur: float) -> go.Figure:
+def price_histogram(lots: Iterable[Lot], cost_eur: float) -> Any:
     prices = [lot.hammer_eur for lot in lots if lot.sold and lot.hammer_eur is not None]
+    try:
+        import plotly.graph_objects as go
+    except ModuleNotFoundError:
+        return _FallbackFigure("histogram")
+
     figure = go.Figure()
     figure.add_trace(go.Histogram(x=prices, name="Hammer", marker_color="#2563eb"))
     figure.add_vline(
@@ -58,7 +76,7 @@ def price_histogram(lots: Iterable[Lot], cost_eur: float) -> go.Figure:
     return figure
 
 
-def quarterly_median(lots: Iterable[Lot]) -> go.Figure:
+def quarterly_median(lots: Iterable[Lot]) -> Any:
     grouped: dict[str, list[float]] = defaultdict(list)
     for lot in lots:
         if lot.sold and lot.hammer_eur is not None:
@@ -66,6 +84,11 @@ def quarterly_median(lots: Iterable[Lot]) -> go.Figure:
             grouped[f"{lot.ended_at.year}-Q{quarter}"].append(float(lot.hammer_eur))
     labels = sorted(grouped)
     medians = [percentile(grouped[label], 0.5) for label in labels]
+    try:
+        import plotly.graph_objects as go
+    except ModuleNotFoundError:
+        return _FallbackFigure("scatter")
+
     figure = go.Figure(
         go.Scatter(x=labels, y=medians, mode="lines+markers", line_color="#7c3aed")
     )
@@ -78,12 +101,17 @@ def quarterly_median(lots: Iterable[Lot]) -> go.Figure:
     return figure
 
 
-def heart_acceleration(lots: Iterable[Lot]) -> go.Figure:
+def heart_acceleration(lots: Iterable[Lot]) -> Any:
     rows = list(lots)
     values = [lot.hearts / max(lot.days_to_close, 1) for lot in rows]
     average = sum(values) / len(values) if values else 0.0
     colors = ["#16a34a" if value >= average else "#94a3b8" for value in values]
     labels = [lot.lot_id for lot in rows]
+    try:
+        import plotly.graph_objects as go
+    except ModuleNotFoundError:
+        return _FallbackFigure("bar")
+
     figure = go.Figure(go.Bar(x=labels, y=values, marker_color=colors))
     if values:
         figure.add_hline(

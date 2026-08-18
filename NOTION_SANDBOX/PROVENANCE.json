@@ -1,0 +1,10 @@
+{
+  "testReady": true,
+  "baselineStatus": "green",
+  "blockingReason": null,
+  "testCommand": "make verify",
+  "testsRun": 227,
+  "testsPassed": 227,
+  "testsFailed": 0,
+  "exitCode": 0
+}

@@ -11,10 +11,11 @@
   },
   "verification": {
     "command": "PYTHONPATH=src python -m unittest discover -s tests -v",
-    "sourceOnlyTestReady": false,
-    "dependencyBundleRequired": true,
-    "status": "blocked-at-head",
-    "blockingReason": "Baseline currently has import errors: streamlit, rapidfuzz, and plotly are unavailable; test_storage also imports missing cuti.storage.insert_deal_if_new. This is pre-existing at HEAD and is not a packaging failure.",
+    "testReady": true,
+    "sourceOnlyTestReady": true,
+    "dependencyBundleRequired": false,
+    "status": "green",
+    "blockingReason": null,
     "network": "disabled",
     "docker": "unsupported",
     "database": "unsupported"

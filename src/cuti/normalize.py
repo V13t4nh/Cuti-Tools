@@ -11,9 +11,8 @@ import json
 import re
 import unicodedata
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from pathlib import Path
-
-from rapidfuzz import fuzz
 
 from .errors import ConfigError, NormalizationError
 from .models import Condition
@@ -275,12 +274,25 @@ def model_key(title: str, rules: Rules, *, brand: str | None = None) -> str:
 
 
 def similarity(left: str, right: str) -> float:
-    """Order-insensitive similarity in [0, 1] between two titles."""
-    left_norm = normalize_text(left)
-    right_norm = normalize_text(right)
-    if not left_norm or not right_norm:
+    """Return order-insensitive token-set similarity on a 0..100 scale.
+
+    ``rapidfuzz.token_set_ratio`` was used here originally.  The small
+    token-set arrangement below preserves its useful subset behaviour (a
+    title with extra condition words still matches its model) while using
+    only :class:`difflib.SequenceMatcher` from the standard library.
+    """
+    left_tokens = set(tokenize(left))
+    right_tokens = set(tokenize(right))
+    if not left_tokens or not right_tokens:
         return 0.0
-    return fuzz.token_set_ratio(left_norm, right_norm) / 100.0
+    common = " ".join(sorted(left_tokens & right_tokens))
+    left_full = " ".join(sorted(left_tokens))
+    right_full = " ".join(sorted(right_tokens))
+    return 100.0 * max(
+        SequenceMatcher(None, common, left_full).ratio(),
+        SequenceMatcher(None, common, right_full).ratio(),
+        SequenceMatcher(None, left_full, right_full).ratio(),
+    )
 
 
 @dataclass(frozen=True, slots=True)

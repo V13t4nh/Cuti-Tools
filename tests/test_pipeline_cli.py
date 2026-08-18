@@ -247,7 +247,7 @@ class CliTests(ProjectTestCase):
         lines = [
             f"CUTI_LOTS_SOURCE_URL={self.home}/data/sample/catawiki/page-1.html",
             f"CUTI_DEALS_SOURCE_URL={self.home}/data/sample/deals/deals.json",
-            "CUTI_MATCH_THRESHOLD=0.8",
+            "CUTI_MATCH_THRESHOLD=80",
         ]
         (self.home / ".env").write_text("\n".join(lines) + "\n", encoding="utf-8")
 

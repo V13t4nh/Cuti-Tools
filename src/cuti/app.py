@@ -4,22 +4,13 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import streamlit as st
-
-from cuti.charts import (
-    brand_lots,
-    heart_acceleration,
-    model_lots,
-    price_histogram,
-    quarterly_median,
-)
 from cuti.config import BUSINESS_TIMEZONE, load_settings
 from cuti.errors import CutiError
 from cuti.liquidity import compute_liquidity
 from cuti.models import Condition, Verdict, WatchForm
 from cuti.normalize import load_rules
 from cuti.pipeline import quote_watch
-from cuti.storage import open_db
+from cuti.storage import connect
 
 
 VERDICT_LABELS = {
@@ -34,7 +25,15 @@ def _money(value: float | None) -> str:
     return "—" if value is None else f"{value:,.0f} EUR"
 
 
-def _render_quote(conn, report, settings, today) -> None:
+def _render_quote(conn, report, settings, today, st) -> None:
+    from cuti.charts import (
+        brand_lots,
+        heart_acceleration,
+        model_lots,
+        price_histogram,
+        quarterly_median,
+    )
+
     price = report.price
     verdict_renderer = {
         Verdict.GREEN: st.success,
@@ -81,7 +80,7 @@ def _render_quote(conn, report, settings, today) -> None:
     )
 
 
-def _render_liquidity(conn, settings, today) -> None:
+def _render_liquidity(conn, settings, today, st) -> None:
     report = compute_liquidity(conn, settings, today)
     st.header("Thanh khoản theo brand + form")
     if not report.brands:
@@ -111,6 +110,8 @@ def _render_liquidity(conn, settings, today) -> None:
 
 
 def main() -> None:
+    import streamlit as st
+
     st.set_page_config(page_title="CUTI-Tools", page_icon="⌚", layout="wide")
     st.title("CUTI-Tools — Watch Arbitrage")
     st.caption("Một công thức pricing dùng chung cho form buyer và bot săn deal.")
@@ -119,7 +120,7 @@ def main() -> None:
         rules = load_rules(settings.rules_path)
         now = datetime.now(timezone.utc)
         today = now.astimezone(BUSINESS_TIMEZONE).date()
-        with open_db(settings.db_path) as conn:
+        with connect(settings.db_path) as conn:
             with st.form("quote-form"):
                 title = st.text_input("Tên / reference đồng hồ")
                 cost_vnd = st.number_input(
@@ -155,8 +156,8 @@ def main() -> None:
                         today=today,
                         now=now,
                     )
-                    _render_quote(conn, report, settings, today)
-            _render_liquidity(conn, settings, today)
+                    _render_quote(conn, report, settings, today, st)
+            _render_liquidity(conn, settings, today, st)
     except CutiError as exc:
         st.error(str(exc))
 

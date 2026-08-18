@@ -14,7 +14,7 @@ from datetime import date, timedelta
 from .config import Settings
 from .models import Condition, Lot
 from .normalize import Rules, classify, model_tokens, similarity
-from .storage import search_comparable_candidates
+from .storage import search_sold_lots
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,7 +46,7 @@ def find_comparables(
 ) -> list[ScoredLot]:
     """Return sold and unsold attempts similar enough to ``title``, best first."""
     classification = classify(title, rules)
-    candidates = search_comparable_candidates(
+    candidates = search_sold_lots(
         conn,
         fts_query=build_fts_query(title, rules),
         brand=classification.brand,
@@ -55,6 +55,7 @@ def find_comparables(
         model_key=classification.model_key if classification.references else None,
         condition_tag=condition,
         since=window_start(today, settings),
+        include_unsold=True,
     )
     scored = [
         ScoredLot(lot=lot, score=similarity(title, lot.title))

@@ -107,13 +107,13 @@ class ModelKeyTests(ProjectTestCase):
 
 class SimilarityTests(unittest.TestCase):
     def test_identical_titles(self) -> None:
-        self.assertEqual(similarity("Omega 210.30", "omega  210.30!"), 1.0)
+        self.assertEqual(similarity("Omega 210.30", "omega  210.30!"), 100.0)
 
     def test_token_order_does_not_matter(self) -> None:
-        self.assertEqual(similarity("Omega Seamaster", "Seamaster Omega"), 1.0)
+        self.assertEqual(similarity("Omega Seamaster", "Seamaster Omega"), 100.0)
 
     def test_unrelated_titles_score_low(self) -> None:
-        self.assertLess(similarity("Omega Seamaster 210", "Seiko Presage SRPB41"), 0.6)
+        self.assertLess(similarity("Omega Seamaster 210", "Seiko Presage SRPB41"), 60.0)
 
     def test_empty_input_scores_zero(self) -> None:
         self.assertEqual(similarity("", "Omega"), 0.0)
@@ -121,7 +121,7 @@ class SimilarityTests(unittest.TestCase):
     def test_result_is_bounded(self) -> None:
         score = similarity("Rolex Datejust 126234", "Rolex Datejust 126233")
         self.assertGreaterEqual(score, 0.0)
-        self.assertLessEqual(score, 1.0)
+        self.assertLessEqual(score, 100.0)
 
 
 class RulesLoadingTests(ProjectTestCase):

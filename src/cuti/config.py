@@ -49,7 +49,7 @@ DEFAULTS: dict[str, str] = {
     "CUTI_MIN_PROFIT_EUR": "50",
     # matching
     "CUTI_MIN_COMPARABLES": "5",
-    "CUTI_MATCH_THRESHOLD": "0.85",
+    "CUTI_MATCH_THRESHOLD": "85",
     "CUTI_COMPARABLE_WINDOW_DAYS": "730",
     # liquidity index
     "CUTI_LIQUIDITY_REF_DAYS": "30",
@@ -245,9 +245,9 @@ def load_settings(
         )
 
     match_threshold = _as_float(values, "CUTI_MATCH_THRESHOLD")
-    if not 0.0 < match_threshold <= 1.0:
+    if not 0.0 < match_threshold <= 100.0:
         raise ConfigError(
-            f"CUTI_MATCH_THRESHOLD: expected a value in (0, 1], got {match_threshold}"
+            f"CUTI_MATCH_THRESHOLD: expected a value in (0, 100], got {match_threshold}"
         )
 
     min_comparables = _as_int(values, "CUTI_MIN_COMPARABLES")

@@ -492,15 +492,15 @@ class MigrationTests(unittest.TestCase):
             migrated = connect(path)
             try:
                 row = migrated.execute(
-                    "SELECT attempt_count, sell_through_rate, assumptions_json "
+                    "SELECT attempt_count, sell_through_rate, assumptions "
                     "FROM quotes WHERE id=1"
                 ).fetchone()
                 self.assertEqual((row["attempt_count"], row["sell_through_rate"]), (5, 1.0))
                 self.assertEqual(
-                    row["assumptions_json"],
-                    '{"audit_version":1,"legacy_snapshot":"unavailable"}',
+                    row["assumptions"],
+                    '{"audit_version": 1, "legacy_snapshot": "unavailable"}',
                 )
-                self.assertEqual(migrated.execute("PRAGMA user_version").fetchone()[0], 2)
+                self.assertEqual(migrated.execute("PRAGMA user_version").fetchone()[0], 3)
             finally:
                 migrated.close()
 

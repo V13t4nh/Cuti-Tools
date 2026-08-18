@@ -19,6 +19,16 @@ TODAY = date(2026, 8, 1)
 NOW = datetime(2026, 8, 1, 12, 0, tzinfo=timezone.utc)
 
 
+def settings_for(base_dir: Path, **overrides: str) -> Settings:
+    """Build settings for tests that own a temporary project directory."""
+    env = {
+        "CUTI_HOME": str(base_dir),
+        "CUTI_DB_PATH": str(base_dir / "var" / "auctions.db"),
+        **overrides,
+    }
+    return load_settings(env=env, base_dir=base_dir)
+
+
 class ProjectTestCase(unittest.TestCase):
     """Base case giving each test its own project home and database."""
 
