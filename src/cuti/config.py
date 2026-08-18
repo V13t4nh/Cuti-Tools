@@ -1,11 +1,8 @@
-"""Environment-driven configuration.
+"""Environment-driven, validated application settings.
 
-Every tunable lives here exactly once (DRY). Nothing downstream reads
-``os.environ`` directly, and no module hard-codes a business constant.
-
-Resolution order: real environment > ``.env`` file > ``DEFAULTS``.
-Defaults are declared values, not runtime fallbacks: an invalid value always
-raises :class:`ConfigError` instead of being silently repaired.
+Resolution order is real environment, ``.env`` file, then the defaults in
+``SETTING_SPECS``. Each setting's parser, default, validation, and
+normalization is declared once in that table.
 """
 
 from __future__ import annotations
@@ -15,75 +12,181 @@ import os
 from dataclasses import dataclass
 from datetime import timedelta, timezone
 from pathlib import Path
-from typing import Mapping
+from typing import Callable, Mapping
 
 from .errors import ConfigError
 
 ENV_FILE_NAME = ".env"
 HOME_VAR = "CUTI_HOME"
-
-DEFAULTS: dict[str, str] = {
-    # storage
-    "CUTI_DB_PATH": "var/auctions.db",
-    "CUTI_RULES_PATH": "config/rules.json",
-    # sources
-    "CUTI_LOTS_SOURCE_URL": "data/sample/catawiki/page-1.html",
-    "CUTI_DEALS_SOURCE_URL": "data/sample/deals/deals.json",
-    "CUTI_SOURCE_MAX_PAGES": "10",
-    # live auction API (capture open lots, settle them after close)
-    "CUTI_CATAWIKI_API_BASE": "https://www.catawiki.com",
-    "CUTI_CATAWIKI_QUERIES": "watch",
-    "CUTI_CATAWIKI_SEARCH_MAX_PAGES": "5",
-    "CUTI_CATAWIKI_BATCH_SIZE": "50",
-    "CUTI_CATAWIKI_PAUSE_SECONDS": "1.0",
-    "CUTI_SETTLE_MAX_LOTS": "200",
-    "CUTI_URL_CHECK_MAX_LOTS": "200",
-    "CUTI_HTTP_TIMEOUT_SECONDS": "20",
-    "CUTI_RESPONSE_MAX_BYTES": "5000000",
-    # pricing
-    "CUTI_COMMISSION_RATE": "0.125",
-    "CUTI_VAT_ON_COMMISSION_RATE": "0.21",
-    "CUTI_SHIPPING_EUR": "35",
-    "CUTI_EUR_VND_RATE": "27000",
-    "CUTI_MIN_MARGIN_RATE": "0.15",
-    "CUTI_MIN_PROFIT_EUR": "50",
-    # matching
-    "CUTI_MIN_COMPARABLES": "5",
-    "CUTI_MATCH_THRESHOLD": "85",
-    "CUTI_COMPARABLE_WINDOW_DAYS": "730",
-    # liquidity index
-    "CUTI_LIQUIDITY_REF_DAYS": "30",
-    "CUTI_LIQUIDITY_HOT_HEARTS": "50",
-    "CUTI_LIQUIDITY_W_SELL_THROUGH": "0.5",
-    "CUTI_LIQUIDITY_W_SPEED": "0.3",
-    "CUTI_LIQUIDITY_W_HEARTS": "0.2",
-    "CUTI_LIQUIDITY_MIN_LOTS": "5",
-    "CUTI_LIQUIDITY_DECLINE_RATE": "0.20",
-    # deal freshness
-    "CUTI_DEAL_MAX_AGE_DAYS": "30",
-    "CUTI_ALERT_MAX_ATTEMPTS": "8",
-    # notifications
-    "CUTI_NOTIFIER": "file",
-    "CUTI_NOTIFIER_FILE_PATH": "var/alerts.jsonl",
-    "CUTI_TELEGRAM_API_BASE": "https://api.telegram.org",
-    "CUTI_TELEGRAM_BOT_TOKEN": "",
-    "CUTI_TELEGRAM_CHAT_ID": "",
-    # reporting
-    "CUTI_REPORT_PATH": "var/report.html",
-}
-
 NOTIFIER_KINDS = ("file", "telegram")
 BUSINESS_TIMEZONE = timezone(timedelta(hours=7), name="Asia/Bangkok")
 
+Parser = Callable[[str], object]
+Validator = Callable[[str, object], object]
+Normalizer = Callable[[Path, str, object], object]
+
+
+@dataclass(frozen=True, slots=True)
+class SettingSpec:
+    name: str
+    attr: str
+    parser: Parser
+    default: str
+    validator: Validator
+    normalizer: Normalizer | None = None
+
+
+def _nonempty(name: str, value: object) -> object:
+    if not isinstance(value, str) or not value:
+        raise ConfigError(f"{name}: must not be empty")
+    return value
+
+
+def _number(name: str, value: object) -> object:
+    if not math.isfinite(value):
+        raise ConfigError(f"{name}: expected a finite number, got {value}")
+    return value
+
+
+def _nonnegative(name: str, value: object) -> object:
+    _number(name, value)
+    if value < 0:
+        raise ConfigError(f"{name}: expected a value >= 0, got {value}")
+    return value
+
+
+def _positive(name: str, value: object) -> object:
+    _number(name, value)
+    if value <= 0:
+        raise ConfigError(f"{name}: expected a value > 0, got {value}")
+    return value
+
+
+def _rate(name: str, value: object) -> object:
+    _number(name, value)
+    if not 0.0 <= value < 1.0:
+        raise ConfigError(f"{name}: expected a rate in [0, 1), got {value}")
+    return value
+
+
+def _at_least_one(name: str, value: object) -> object:
+    if value < 1:
+        raise ConfigError(f"{name}: expected >= 1, got {value}")
+    return value
+
+
+def _batch_size(name: str, value: object) -> object:
+    if not 1 <= value <= 100:
+        raise ConfigError(f"{name}: expected 1..100, got {value}")
+    return value
+
+
+def _match_threshold(name: str, value: object) -> object:
+    if not 0.0 < value <= 100.0:
+        raise ConfigError(f"{name}: expected a value in (0, 100], got {value}")
+    return value
+
+
+def _notifier(name: str, value: object) -> object:
+    value = value.strip().lower()
+    if value not in NOTIFIER_KINDS:
+        raise ConfigError(f"{name}: expected one of {', '.join(NOTIFIER_KINDS)}, got {value!r}")
+    return value
+
+
+def _http_url(name: str, value: object) -> object:
+    value = value.strip().rstrip("/")
+    if not value.startswith(("http://", "https://")):
+        raise ConfigError(f"{name}: expected an http(s) URL, got {value!r}")
+    return value
+
+
+def _parse_queries(value: str) -> object:
+    return value
+
+
+def _queries(name: str, value: object) -> object:
+    result = tuple(part.strip() for part in value.split(",") if part.strip())
+    if not result:
+        raise ConfigError(f"{name}: expected at least one non-empty query")
+    if len(set(result)) != len(result):
+        raise ConfigError(f"{name}: duplicate queries in {result}")
+    return result
+
+
+def _path(base: Path, name: str, value: object) -> object:
+    _nonempty(name, value)
+    path = Path(value)
+    return path if path.is_absolute() or value.startswith(("/", "\\")) else (base / path).resolve()
+
+
+def _location(base: Path, name: str, value: object) -> object:
+    _nonempty(name, value)
+    if "://" in value:
+        return value
+    path = Path(value)
+    return str(path if path.is_absolute() or value.startswith(("/", "\\")) else (base / path).resolve())
+
+
+def _integer(name: str, value: object) -> object:
+    if value < 0:
+        raise ConfigError(f"{name}: expected a non-negative integer, got {value}")
+    return value
+
+
+# name, Settings attribute, parser/type, default, validator, optional normalizer
+SETTING_SPECS = (
+    SettingSpec("CUTI_DB_PATH", "db_path", str, "var/auctions.db", _nonempty, _path),
+    SettingSpec("CUTI_RULES_PATH", "rules_path", str, "config/rules.json", _nonempty, _path),
+    SettingSpec("CUTI_LOTS_SOURCE_URL", "lots_source_url", str, "data/sample/catawiki/page-1.html", _nonempty, _location),
+    SettingSpec("CUTI_DEALS_SOURCE_URL", "deals_source_url", str, "data/sample/deals/deals.json", _nonempty, _location),
+    SettingSpec("CUTI_SOURCE_MAX_PAGES", "source_max_pages", int, "10", _at_least_one),
+    SettingSpec("CUTI_CATAWIKI_API_BASE", "catawiki_api_base", str, "https://www.catawiki.com", _http_url),
+    SettingSpec("CUTI_CATAWIKI_QUERIES", "catawiki_queries", _parse_queries, "watch", _queries),
+    SettingSpec("CUTI_CATAWIKI_SEARCH_MAX_PAGES", "catawiki_search_max_pages", int, "5", _at_least_one),
+    SettingSpec("CUTI_CATAWIKI_BATCH_SIZE", "catawiki_batch_size", int, "50", _batch_size),
+    SettingSpec("CUTI_CATAWIKI_PAUSE_SECONDS", "catawiki_pause_seconds", float, "1.0", _nonnegative),
+    SettingSpec("CUTI_SETTLE_MAX_LOTS", "settle_max_lots", int, "200", _at_least_one),
+    SettingSpec("CUTI_URL_CHECK_MAX_LOTS", "url_check_max_lots", int, "200", _at_least_one),
+    SettingSpec("CUTI_HTTP_TIMEOUT_SECONDS", "http_timeout_seconds", float, "20", _positive),
+    SettingSpec("CUTI_RESPONSE_MAX_BYTES", "response_max_bytes", int, "5000000", _at_least_one),
+    SettingSpec("CUTI_COMMISSION_RATE", "commission_rate", float, "0.125", _rate),
+    SettingSpec("CUTI_VAT_ON_COMMISSION_RATE", "vat_on_commission_rate", float, "0.21", _rate),
+    SettingSpec("CUTI_SHIPPING_EUR", "shipping_eur", float, "35", _nonnegative),
+    SettingSpec("CUTI_EUR_VND_RATE", "eur_vnd_rate", float, "27000", _positive),
+    SettingSpec("CUTI_MIN_MARGIN_RATE", "min_margin_rate", float, "0.15", _rate),
+    SettingSpec("CUTI_MIN_PROFIT_EUR", "min_profit_eur", float, "50", _nonnegative),
+    SettingSpec("CUTI_MIN_COMPARABLES", "min_comparables", int, "5", _at_least_one),
+    SettingSpec("CUTI_MATCH_THRESHOLD", "match_threshold", float, "85", _match_threshold),
+    SettingSpec("CUTI_COMPARABLE_WINDOW_DAYS", "comparable_window_days", int, "730", _at_least_one),
+    SettingSpec("CUTI_LIQUIDITY_REF_DAYS", "liquidity_ref_days", int, "30", _at_least_one),
+    SettingSpec("CUTI_LIQUIDITY_HOT_HEARTS", "liquidity_hot_hearts", int, "50", _nonnegative),
+    SettingSpec("CUTI_LIQUIDITY_W_SELL_THROUGH", "liquidity_w_sell_through", float, "0.5", _nonnegative),
+    SettingSpec("CUTI_LIQUIDITY_W_SPEED", "liquidity_w_speed", float, "0.3", _nonnegative),
+    SettingSpec("CUTI_LIQUIDITY_W_HEARTS", "liquidity_w_hearts", float, "0.2", _nonnegative),
+    SettingSpec("CUTI_LIQUIDITY_MIN_LOTS", "liquidity_min_lots", int, "5", _at_least_one),
+    SettingSpec("CUTI_LIQUIDITY_DECLINE_RATE", "liquidity_decline_rate", float, "0.20", _rate),
+    SettingSpec("CUTI_DEAL_MAX_AGE_DAYS", "deal_max_age_days", int, "30", _integer),
+    SettingSpec("CUTI_ALERT_MAX_ATTEMPTS", "alert_max_attempts", int, "8", _at_least_one),
+    SettingSpec("CUTI_NOTIFIER", "notifier", str, "file", _notifier),
+    SettingSpec("CUTI_NOTIFIER_FILE_PATH", "notifier_file_path", str, "var/alerts.jsonl", _nonempty, _path),
+    SettingSpec("CUTI_TELEGRAM_API_BASE", "telegram_api_base", str, "https://api.telegram.org", _nonempty, lambda _b, _n, v: v.rstrip("/")),
+    SettingSpec("CUTI_TELEGRAM_BOT_TOKEN", "telegram_bot_token", str, "", lambda _n, v: v.strip()),
+    SettingSpec("CUTI_TELEGRAM_CHAT_ID", "telegram_chat_id", str, "", lambda _n, v: v.strip()),
+    SettingSpec("CUTI_REPORT_PATH", "report_path", str, "var/report.html", _nonempty, _path),
+)
+
+DEFAULTS = {spec.name: spec.default for spec in SETTING_SPECS}
+
+
 def parse_env_file(text: str) -> dict[str, str]:
-    """Parse a minimal ``KEY=VALUE`` env file. Unparsable lines are errors."""
     values: dict[str, str] = {}
     for lineno, raw in enumerate(text.splitlines(), start=1):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
         if line.startswith("export "):
-            line = line[len("export ") :].strip()
+            line = line[7:].strip()
         if "=" not in line:
             raise ConfigError(f"{ENV_FILE_NAME}:{lineno}: expected KEY=VALUE, got {raw!r}")
         key, _, value = line.partition("=")
@@ -96,56 +199,35 @@ def parse_env_file(text: str) -> dict[str, str]:
         values[key] = value
     return values
 
-def _resolve_values(env: Mapping[str, str], base_dir: Path) -> dict[str, str]:
+
+def _resolve_values(env: Mapping[str, str], base: Path) -> dict[str, str]:
     values = dict(DEFAULTS)
-    env_file = base_dir / ENV_FILE_NAME
+    env_file = base / ENV_FILE_NAME
     if env_file.is_file():
         file_values = parse_env_file(env_file.read_text(encoding="utf-8"))
-        unknown_file = sorted(k for k in file_values if k.startswith("CUTI_") and k not in DEFAULTS)
-        if unknown_file:
-            raise ConfigError(f"unknown CUTI_* variables in {ENV_FILE_NAME}: {', '.join(unknown_file)}")
+        unknown = sorted(k for k in file_values if k.startswith("CUTI_") and k not in DEFAULTS)
+        if unknown:
+            raise ConfigError(f"unknown CUTI_* variables in {ENV_FILE_NAME}: {', '.join(unknown)}")
         values.update(file_values)
     values.update({k: v for k, v in env.items() if k in DEFAULTS})
-    unknown = sorted(
-        k for k in env if k.startswith("CUTI_") and k not in DEFAULTS and k != HOME_VAR
-    )
+    unknown = sorted(k for k in env if k.startswith("CUTI_") and k not in DEFAULTS and k != HOME_VAR)
     if unknown:
         raise ConfigError(f"unknown CUTI_* variables: {', '.join(unknown)}")
     return values
 
-def _as_float(values: Mapping[str, str], key: str) -> float:
-    raw = values[key]
+
+def _convert(spec: SettingSpec, raw: str, base: Path) -> object:
     try:
-        return float(raw)
-    except ValueError as exc:
-        raise ConfigError(f"{key}: expected a number, got {raw!r}") from exc
+        value = spec.parser(raw)
+    except (TypeError, ValueError) as exc:
+        kind = "a number" if spec.parser is float else "an integer" if spec.parser is int else "a valid value"
+        raise ConfigError(f"{spec.name}: expected {kind}, got {raw!r}") from exc
+    value = spec.validator(spec.name, value)
+    return spec.normalizer(base, spec.name, value) if spec.normalizer else value
 
-def _as_int(values: Mapping[str, str], key: str) -> int:
-    raw = values[key]
-    try:
-        return int(raw)
-    except ValueError as exc:
-        raise ConfigError(f"{key}: expected an integer, got {raw!r}") from exc
-
-def _require_rate(name: str, value: float) -> float:
-    if not 0.0 <= value < 1.0:
-        raise ConfigError(f"{name}: expected a rate in [0, 1), got {value}")
-    return value
-
-def _require_positive(name: str, value: float) -> float:
-    if not math.isfinite(value) or value <= 0:
-        raise ConfigError(f"{name}: expected a value > 0, got {value}")
-    return value
-
-def _require_non_negative(name: str, value: float) -> float:
-    if not math.isfinite(value) or value < 0:
-        raise ConfigError(f"{name}: expected a value >= 0, got {value}")
-    return value
 
 @dataclass(frozen=True, slots=True)
 class Settings:
-    """Immutable, validated runtime configuration."""
-
     base_dir: Path
     db_path: Path
     rules_path: Path
@@ -188,218 +270,33 @@ class Settings:
 
     @property
     def total_fee_multiplier(self) -> float:
-        """Fraction of the hammer price kept by the marketplace (fee + VAT)."""
         return self.commission_rate * (1.0 + self.vat_on_commission_rate)
 
-def _resolve_location(base_dir: Path, value: str, name: str) -> str:
-    """Turn a plain path into an absolute one; leave real URLs untouched."""
-    if not value:
-        raise ConfigError(f"{name}: must not be empty")
-    if "://" in value:
-        return value
-    path = Path(value)
-    return str(path if path.is_absolute() or value.startswith(("/", "\\")) else (base_dir / path).resolve())
 
-def _resolve_path(base_dir: Path, value: str, name: str) -> Path:
-    if not value:
-        raise ConfigError(f"{name}: must not be empty")
-    path = Path(value)
-    return path if path.is_absolute() or value.startswith(("/", "\\")) else (base_dir / path).resolve()
-
-def load_settings(
-    env: Mapping[str, str] | None = None, base_dir: Path | str | None = None
-) -> Settings:
-    """Build validated settings from the environment."""
+def load_settings(env: Mapping[str, str] | None = None, base_dir: Path | str | None = None) -> Settings:
     env = os.environ if env is None else env
-    if base_dir is None:
-        base_dir = env.get(HOME_VAR) or Path.cwd()
-    base = Path(base_dir).resolve()
+    base = Path(base_dir or env.get(HOME_VAR) or Path.cwd()).resolve()
     if not base.is_dir():
         raise ConfigError(f"{HOME_VAR}: {base} is not a directory")
-
     values = _resolve_values(env, base)
-
-    notifier = values["CUTI_NOTIFIER"].strip().lower()
-    if notifier not in NOTIFIER_KINDS:
-        raise ConfigError(
-            f"CUTI_NOTIFIER: expected one of {', '.join(NOTIFIER_KINDS)}, got {notifier!r}"
-        )
-    telegram_token = values["CUTI_TELEGRAM_BOT_TOKEN"].strip()
-    telegram_chat = values["CUTI_TELEGRAM_CHAT_ID"].strip()
-    if notifier == "telegram" and not (telegram_token and telegram_chat):
-        raise ConfigError(
-            "CUTI_NOTIFIER=telegram requires CUTI_TELEGRAM_BOT_TOKEN and CUTI_TELEGRAM_CHAT_ID"
-        )
-
-    weights = {
-        "CUTI_LIQUIDITY_W_SELL_THROUGH": _as_float(values, "CUTI_LIQUIDITY_W_SELL_THROUGH"),
-        "CUTI_LIQUIDITY_W_SPEED": _as_float(values, "CUTI_LIQUIDITY_W_SPEED"),
-        "CUTI_LIQUIDITY_W_HEARTS": _as_float(values, "CUTI_LIQUIDITY_W_HEARTS"),
-    }
-    for name, weight in weights.items():
-        _require_non_negative(name, weight)
-    if abs(sum(weights.values()) - 1.0) > 1e-9:
-        raise ConfigError(
-            "CUTI_LIQUIDITY_W_*: weights must sum to 1.0, got "
-            + f"{sum(weights.values()):.4f}"
-        )
-
-    match_threshold = _as_float(values, "CUTI_MATCH_THRESHOLD")
-    if not 0.0 < match_threshold <= 100.0:
-        raise ConfigError(
-            f"CUTI_MATCH_THRESHOLD: expected a value in (0, 100], got {match_threshold}"
-        )
-
-    min_comparables = _as_int(values, "CUTI_MIN_COMPARABLES")
-    if min_comparables < 1:
-        raise ConfigError(f"CUTI_MIN_COMPARABLES: expected >= 1, got {min_comparables}")
-
-    max_pages = _as_int(values, "CUTI_SOURCE_MAX_PAGES")
-    if max_pages < 1:
-        raise ConfigError(f"CUTI_SOURCE_MAX_PAGES: expected >= 1, got {max_pages}")
-
-    window_days = _as_int(values, "CUTI_COMPARABLE_WINDOW_DAYS")
-    if window_days < 1:
-        raise ConfigError(f"CUTI_COMPARABLE_WINDOW_DAYS: expected >= 1, got {window_days}")
-
-    liquidity_min_lots = _as_int(values, "CUTI_LIQUIDITY_MIN_LOTS")
-    if liquidity_min_lots < 1:
-        raise ConfigError(f"CUTI_LIQUIDITY_MIN_LOTS: expected >= 1, got {liquidity_min_lots}")
-
-    response_max_bytes = _as_int(values, "CUTI_RESPONSE_MAX_BYTES")
-    if response_max_bytes < 1:
-        raise ConfigError(f"CUTI_RESPONSE_MAX_BYTES: expected >= 1, got {response_max_bytes}")
-
-    deal_max_age_days = _as_int(values, "CUTI_DEAL_MAX_AGE_DAYS")
-    if deal_max_age_days < 0:
-        raise ConfigError(f"CUTI_DEAL_MAX_AGE_DAYS: expected >= 0, got {deal_max_age_days}")
-
-    alert_max_attempts = _as_int(values, "CUTI_ALERT_MAX_ATTEMPTS")
-    if alert_max_attempts < 1:
-        raise ConfigError(f"CUTI_ALERT_MAX_ATTEMPTS: expected >= 1, got {alert_max_attempts}")
-
-    decline_rate = _require_rate(
-        "CUTI_LIQUIDITY_DECLINE_RATE", _as_float(values, "CUTI_LIQUIDITY_DECLINE_RATE")
-    )
-
-    catawiki_api_base = values["CUTI_CATAWIKI_API_BASE"].strip().rstrip("/")
-    if not catawiki_api_base.startswith(("http://", "https://")):
-        raise ConfigError(
-            f"CUTI_CATAWIKI_API_BASE: expected an http(s) URL, got {catawiki_api_base!r}"
-        )
-    catawiki_queries = tuple(
-        part.strip() for part in values["CUTI_CATAWIKI_QUERIES"].split(",") if part.strip()
-    )
-    if not catawiki_queries:
-        raise ConfigError("CUTI_CATAWIKI_QUERIES: expected at least one non-empty query")
-    if len(set(catawiki_queries)) != len(catawiki_queries):
-        raise ConfigError(f"CUTI_CATAWIKI_QUERIES: duplicate queries in {catawiki_queries}")
-
-    catawiki_search_max_pages = _as_int(values, "CUTI_CATAWIKI_SEARCH_MAX_PAGES")
-    if catawiki_search_max_pages < 1:
-        raise ConfigError(
-            f"CUTI_CATAWIKI_SEARCH_MAX_PAGES: expected >= 1, got {catawiki_search_max_pages}"
-        )
-
-    catawiki_batch_size = _as_int(values, "CUTI_CATAWIKI_BATCH_SIZE")
-    if not 1 <= catawiki_batch_size <= 100:
-        raise ConfigError(
-            f"CUTI_CATAWIKI_BATCH_SIZE: expected 1..100, got {catawiki_batch_size}"
-        )
-
-    settle_max_lots = _as_int(values, "CUTI_SETTLE_MAX_LOTS")
-    if settle_max_lots < 1:
-        raise ConfigError(f"CUTI_SETTLE_MAX_LOTS: expected >= 1, got {settle_max_lots}")
-
-    url_check_max_lots = _as_int(values, "CUTI_URL_CHECK_MAX_LOTS")
-    if url_check_max_lots < 1:
-        raise ConfigError(f"CUTI_URL_CHECK_MAX_LOTS: expected >= 1, got {url_check_max_lots}")
-
-    settings = Settings(
-        base_dir=base,
-        db_path=_resolve_path(base, values["CUTI_DB_PATH"], "CUTI_DB_PATH"),
-        rules_path=_resolve_path(base, values["CUTI_RULES_PATH"], "CUTI_RULES_PATH"),
-        lots_source_url=_resolve_location(
-            base, values["CUTI_LOTS_SOURCE_URL"], "CUTI_LOTS_SOURCE_URL"
-        ),
-        deals_source_url=_resolve_location(
-            base, values["CUTI_DEALS_SOURCE_URL"], "CUTI_DEALS_SOURCE_URL"
-        ),
-        source_max_pages=max_pages,
-        catawiki_api_base=catawiki_api_base,
-        catawiki_queries=catawiki_queries,
-        catawiki_search_max_pages=catawiki_search_max_pages,
-        catawiki_batch_size=catawiki_batch_size,
-        catawiki_pause_seconds=_require_non_negative(
-            "CUTI_CATAWIKI_PAUSE_SECONDS", _as_float(values, "CUTI_CATAWIKI_PAUSE_SECONDS")
-        ),
-        settle_max_lots=settle_max_lots,
-        url_check_max_lots=url_check_max_lots,
-        http_timeout_seconds=_require_positive(
-            "CUTI_HTTP_TIMEOUT_SECONDS", _as_float(values, "CUTI_HTTP_TIMEOUT_SECONDS")
-        ),
-        response_max_bytes=response_max_bytes,
-        commission_rate=_require_rate(
-            "CUTI_COMMISSION_RATE", _as_float(values, "CUTI_COMMISSION_RATE")
-        ),
-        vat_on_commission_rate=_require_rate(
-            "CUTI_VAT_ON_COMMISSION_RATE", _as_float(values, "CUTI_VAT_ON_COMMISSION_RATE")
-        ),
-        shipping_eur=_require_non_negative(
-            "CUTI_SHIPPING_EUR", _as_float(values, "CUTI_SHIPPING_EUR")
-        ),
-        eur_vnd_rate=_require_positive(
-            "CUTI_EUR_VND_RATE", _as_float(values, "CUTI_EUR_VND_RATE")
-        ),
-        min_margin_rate=_require_rate(
-            "CUTI_MIN_MARGIN_RATE", _as_float(values, "CUTI_MIN_MARGIN_RATE")
-        ),
-        min_profit_eur=_require_non_negative(
-            "CUTI_MIN_PROFIT_EUR", _as_float(values, "CUTI_MIN_PROFIT_EUR")
-        ),
-        min_comparables=min_comparables,
-        match_threshold=match_threshold,
-        comparable_window_days=window_days,
-        liquidity_ref_days=int(
-            _require_positive(
-                "CUTI_LIQUIDITY_REF_DAYS", _as_int(values, "CUTI_LIQUIDITY_REF_DAYS")
-            )
-        ),
-        liquidity_hot_hearts=int(
-            _require_non_negative(
-                "CUTI_LIQUIDITY_HOT_HEARTS", _as_int(values, "CUTI_LIQUIDITY_HOT_HEARTS")
-            )
-        ),
-        liquidity_w_sell_through=weights["CUTI_LIQUIDITY_W_SELL_THROUGH"],
-        liquidity_w_speed=weights["CUTI_LIQUIDITY_W_SPEED"],
-        liquidity_w_hearts=weights["CUTI_LIQUIDITY_W_HEARTS"],
-        liquidity_min_lots=liquidity_min_lots,
-        liquidity_decline_rate=decline_rate,
-        deal_max_age_days=deal_max_age_days,
-        alert_max_attempts=alert_max_attempts,
-        notifier=notifier,
-        notifier_file_path=_resolve_path(
-            base, values["CUTI_NOTIFIER_FILE_PATH"], "CUTI_NOTIFIER_FILE_PATH"
-        ),
-        telegram_api_base=values["CUTI_TELEGRAM_API_BASE"].rstrip("/"),
-        telegram_bot_token=telegram_token,
-        telegram_chat_id=telegram_chat,
-        report_path=_resolve_path(base, values["CUTI_REPORT_PATH"], "CUTI_REPORT_PATH"),
-    )
+    converted = {spec.attr: _convert(spec, values[spec.name], base) for spec in SETTING_SPECS}
+    if converted["notifier"] == "telegram" and not (converted["telegram_bot_token"] and converted["telegram_chat_id"]):
+        raise ConfigError("CUTI_NOTIFIER=telegram requires CUTI_TELEGRAM_BOT_TOKEN and CUTI_TELEGRAM_CHAT_ID")
+    weights = tuple(converted[key] for key in ("liquidity_w_sell_through", "liquidity_w_speed", "liquidity_w_hearts"))
+    if abs(sum(weights) - 1.0) > 1e-9:
+        raise ConfigError(f"CUTI_LIQUIDITY_W_*: weights must sum to 1.0, got {sum(weights):.4f}")
+    settings = Settings(base_dir=base, **converted)
     if settings.total_fee_multiplier >= 1.0:
-        raise ConfigError(
-            "CUTI_COMMISSION_RATE and CUTI_VAT_ON_COMMISSION_RATE produce fees >= hammer price"
-        )
-    writable_paths = {
+        raise ConfigError("CUTI_COMMISSION_RATE and CUTI_VAT_ON_COMMISSION_RATE produce fees >= hammer price")
+    writable = {
         "CUTI_DB_PATH": settings.db_path,
         "CUTI_NOTIFIER_FILE_PATH": settings.notifier_file_path,
         "CUTI_REPORT_PATH": settings.report_path,
     }
     by_path: dict[Path, list[str]] = {}
-    for name, path in writable_paths.items():
+    for name, path in writable.items():
         by_path.setdefault(path, []).append(name)
     collisions = [names for names in by_path.values() if len(names) > 1]
     if collisions:
-        joined = "; ".join(" = ".join(names) for names in collisions)
-        raise ConfigError(f"output paths must be distinct: {joined}")
+        raise ConfigError("output paths must be distinct: " + "; ".join(" = ".join(names) for names in collisions))
     return settings
