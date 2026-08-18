@@ -12,6 +12,7 @@ var/
 
 # Local repository indexes and caches
 .codegraph/
+.zip/
 .cache/
 .hypothesis/
 .tox/

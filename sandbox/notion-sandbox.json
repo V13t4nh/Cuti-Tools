@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "project": "cuti-tools",
+  "language": "python",
+  "runtime": {
+    "name": "python",
+    "major": 3,
+    "platform": "linux",
+    "architecture": "x64",
+    "glibc": "AL2023-compatible"
+  },
+  "verification": {
+    "command": "PYTHONPATH=src python -m unittest discover -s tests -v",
+    "sourceOnlyTestReady": false,
+    "dependencyBundleRequired": true,
+    "status": "blocked-at-head",
+    "blockingReason": "Baseline currently has import errors: streamlit, rapidfuzz, and plotly are unavailable; test_storage also imports missing cuti.storage.insert_deal_if_new. This is pre-existing at HEAD and is not a packaging failure.",
+    "network": "disabled",
+    "docker": "unsupported",
+    "database": "unsupported"
+  },
+  "packaging": {
+    "sourceOnlyDefault": true,
+    "dependencyBundleManifest": "dependency-manifest.json",
+    "dependencyBundlePrefix": "dependencies/",
+    "patchCommand": "git diff --binary > changes.patch"
+  }
+}
