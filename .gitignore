@@ -9,6 +9,7 @@ var/
 *.sqlite
 *.sqlite3
 *.log
+data/sample/
 
 # Local repository indexes and caches
 .codegraph/

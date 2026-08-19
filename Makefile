@@ -15,4 +15,7 @@ test:
 	$(PYTHON) -m unittest discover -s tests -t tests -v
 
 verify:
+	@if ! test -f data/sample/catawiki/page-1.html || ! test -f data/sample/deals/deals.json; then \
+		$(MAKE) sample; \
+	fi
 	$(PYTHON) scripts/verify.py
