@@ -34,6 +34,9 @@ class Settings:
     catawiki_search_max_pages: int
     catawiki_batch_size: int
     catawiki_pause_seconds: float
+    details_request_delay_seconds: float
+    details_max_retries: int
+    details_enabled: bool
     settle_max_lots: int
     url_check_max_lots: int
     http_timeout_seconds: float

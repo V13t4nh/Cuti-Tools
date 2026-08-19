@@ -9,7 +9,7 @@ from datetime import date, datetime
 from typing import Callable
 
 from ..config import Settings
-from ..errors import FetchError, ScrapeError
+from ..errors import ScrapeError
 from ..fetch import fetch_text, probe_url
 from ..normalize import Rules
 from ..scrapers import catawiki_api
@@ -22,6 +22,7 @@ from ..storage import (
     mark_source_availability,
     upsert_live_watch,
 )
+from .details import build_lot_url, fetch_lot_page
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,16 +59,26 @@ class SourceCheckReport:
 def _lot_page_fetcher(
     rows: list[LiveWatchRow], settings: Settings
 ) -> Callable[[str], str | None]:
-    urls = {row.lot_id: row.url for row in rows}
+    known_ids = {row.lot_id for row in rows}
+    requested = False
 
     def fetch(lot_id: str) -> str | None:
-        url = urls.get(lot_id)
-        if url is None:
+        nonlocal requested
+        if not settings.details_enabled or lot_id not in known_ids:
             return None
-        try:
-            return fetch_text(url, settings.http_timeout_seconds, settings.response_max_bytes)
-        except FetchError:
-            return None
+        url = build_lot_url(settings.catawiki_api_base, lot_id)
+        if requested and settings.details_request_delay_seconds > 0:
+            time.sleep(settings.details_request_delay_seconds)
+        requested = True
+        return fetch_lot_page(
+            url,
+            timeout_seconds=settings.http_timeout_seconds,
+            max_bytes=settings.response_max_bytes,
+            delay_seconds=settings.details_request_delay_seconds,
+            max_retries=settings.details_max_retries,
+            fetch=fetch_text,
+            sleep=time.sleep,
+        )
 
     return fetch
 
@@ -144,10 +155,8 @@ def settle_lots(
     """Phase 2: read the hammer price of every tracked lot that has closed."""
     client = _catawiki_client(settings, api)
     candidates = fetch_live_watch_due(conn, until=today, limit=settings.settle_max_lots)
-    settlement = settle(
-        client, rules, settings, candidates,
-        fetch_details=_lot_page_fetcher(candidates, settings),
-    )
+    details = _lot_page_fetcher(candidates, settings) if settings.details_enabled else None
+    settlement = settle(client, rules, settings, candidates, fetch_details=details)
     written = persist(conn, settlement, now)
     return SettleReport(
         candidates=len(candidates),
@@ -188,10 +197,8 @@ def ingest_one_lot(
         bidding_end_at=None,
     )
     upsert_live_watch(conn, [row], now)
-    settlement = settle(
-        client, rules, settings, [row],
-        fetch_details=_lot_page_fetcher([row], settings),
-    )
+    details = _lot_page_fetcher([row], settings) if settings.details_enabled else None
+    settlement = settle(client, rules, settings, [row], fetch_details=details)
     written = persist(conn, settlement, now)
     return SettleReport(
         candidates=1,

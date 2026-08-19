@@ -33,6 +33,11 @@ def build_parser() -> argparse.ArgumentParser:
     ingest_lot_cmd = sub.add_parser("ingest-lot", help="track and settle a single lot URL")
     ingest_lot_cmd.add_argument("--url", required=True, help="source lot URL")
 
+    details_cmd = sub.add_parser("fetch-lot-details", help="fetch and parse one public lot page")
+    details_input = details_cmd.add_mutually_exclusive_group(required=True)
+    details_input.add_argument("--url", help="public Catawiki lot URL")
+    details_input.add_argument("--lot-id", help="Catawiki lot id")
+
     quote_cmd = sub.add_parser("quote", help="price one watch against comparables")
     quote_cmd.add_argument("--title", required=True)
     quote_cmd.add_argument("--cost-vnd", required=True, type=int)

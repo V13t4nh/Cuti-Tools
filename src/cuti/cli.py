@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Sequence
 
@@ -12,6 +13,7 @@ from .cli_output import emit as _emit
 from .cli_parser import _parse_day, build_parser
 from .config import BUSINESS_TIMEZONE, load_settings
 from .errors import CutiError
+from .fetch import fetch_text
 from .liquidity import compute_liquidity
 from .models import Condition, WatchForm
 from .normalize import load_rules
@@ -27,6 +29,8 @@ from .pipeline import (
 )
 from .report import write_report
 from .storage import connect, count_rows, fetch_quote_audit, outbox_counts
+from .pipeline.details import build_lot_url
+from .scrapers.catawiki_lot_page import parse_lot_page
 
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -39,6 +43,11 @@ def run(argv: Sequence[str] | None = None) -> int:
     today = args.today or now.astimezone(BUSINESS_TIMEZONE).date()
     settings = load_settings(base_dir=args.home)
     rules = load_rules(settings.rules_path)
+    if args.command == "fetch-lot-details":
+        url = args.url or build_lot_url(settings.catawiki_api_base, args.lot_id)
+        html = fetch_text(url, settings.http_timeout_seconds, settings.response_max_bytes)
+        _emit(asdict(parse_lot_page(html, rules=rules)), True, [])
+        return EXIT_OK
     operations = {
         "check_source_urls": check_source_urls,
         "compute_liquidity": compute_liquidity,

@@ -26,7 +26,6 @@ def _nonempty(name: str, value: object) -> object:
         raise ConfigError(f"{name}: must not be empty")
     return value
 
-
 def _number(name: str, value: object) -> object:
     if not math.isfinite(value):
         raise ConfigError(f"{name}: expected a finite number, got {value}")
@@ -38,7 +37,6 @@ def _nonnegative(name: str, value: object) -> object:
     if value < 0:
         raise ConfigError(f"{name}: expected a value >= 0, got {value}")
     return value
-
 
 def _positive(name: str, value: object) -> object:
     _number(name, value)
@@ -119,6 +117,13 @@ def _integer(name: str, value: object) -> object:
     return value
 
 
+def _parse_bool(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized not in {"true", "false"}:
+        raise ValueError("expected true or false")
+    return normalized == "true"
+
+
 # name, Settings attribute, parser/type, default, validator, optional normalizer
 SETTING_SPECS = (
     SettingSpec("CUTI_DB_PATH", "db_path", str, "var/auctions.db", _nonempty, _path),
@@ -131,6 +136,9 @@ SETTING_SPECS = (
     SettingSpec("CUTI_CATAWIKI_SEARCH_MAX_PAGES", "catawiki_search_max_pages", int, "5", _at_least_one),
     SettingSpec("CUTI_CATAWIKI_BATCH_SIZE", "catawiki_batch_size", int, "50", _batch_size),
     SettingSpec("CUTI_CATAWIKI_PAUSE_SECONDS", "catawiki_pause_seconds", float, "1.0", _nonnegative),
+    SettingSpec("CUTI_DETAILS_REQUEST_DELAY_SECONDS", "details_request_delay_seconds", float, "1.0", _nonnegative),
+    SettingSpec("CUTI_DETAILS_MAX_RETRIES", "details_max_retries", int, "2", _integer),
+    SettingSpec("CUTI_DETAILS_ENABLED", "details_enabled", _parse_bool, "false", lambda _n, value: value),
     SettingSpec("CUTI_SETTLE_MAX_LOTS", "settle_max_lots", int, "200", _at_least_one),
     SettingSpec("CUTI_URL_CHECK_MAX_LOTS", "url_check_max_lots", int, "200", _at_least_one),
     SettingSpec("CUTI_HTTP_TIMEOUT_SECONDS", "http_timeout_seconds", float, "20", _positive),

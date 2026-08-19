@@ -155,6 +155,19 @@ hình sẽ vào `dead`, không bị báo nhầm là đã gửi. Outbox vẫn đ�
 hoặc parse feed mới thất bại. `cuti watch` in lỗi delivery và trả exit code khác
 0 để cron/Task Scheduler không báo thành công giả.
 
+### Kiểm tra Details của một lot (smoke test thủ công)
+
+Đường này chỉ tải và parse một trang, không mở kết nối SQLite và không ghi DB:
+
+```text
+cuti fetch-lot-details --url https://www.catawiki.com/en/l/123456-example
+cuti fetch-lot-details --lot-id 123456
+```
+
+Kết quả luôn là JSON gồm các trường Details đã parse được. Để lấy Details trong
+`settle` hoặc `ingest-lot`, bật `CUTI_DETAILS_ENABLED=true`; mặc định tắt để các
+lệnh verify và chạy offline không gọi mạng.
+
 Form Streamlit không mặc định tình trạng hoặc form vỏ: buyer phải xác nhận rõ
 cả hai trước khi hệ thống tạo quote. Audit cũ không có snapshot được đánh dấu
 `legacy_snapshot=unavailable`, thay vì được trình bày như quote replayable.
