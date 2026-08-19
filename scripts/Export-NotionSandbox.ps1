@@ -72,6 +72,9 @@ function Test-SecretText([string]$Text) {
 function Add-ZipText([string]$ZipPath, [string]$EntryName, [string]$Text) {
     $zip = [System.IO.Compression.ZipFile]::Open($ZipPath, [System.IO.Compression.ZipArchiveMode]::Update)
     try {
+        foreach ($existing in @($zip.Entries | Where-Object { $_.FullName -eq $EntryName })) {
+            $existing.Delete()
+        }
         $entry = $zip.CreateEntry($EntryName, [System.IO.Compression.CompressionLevel]::Optimal)
         $writer = New-Object System.IO.StreamWriter($entry.Open(), (New-Object System.Text.UTF8Encoding($false)))
         try { $writer.Write($Text) } finally { $writer.Dispose() }
@@ -197,7 +200,22 @@ try {
     $testCommand = [string](Get-ConfigValue $config.verification 'command' 'not specified')
     $baselineStatus = [string](Get-ConfigValue $config.verification 'status' 'not-run')
     $blockingReason = [string](Get-ConfigValue $config.verification 'blockingReason' '')
-    $testReady = $null -ne $bundle
+    $sourceOnly = $null -eq $bundle
+    $sourceOnlyTestReady = [bool](Get-ConfigValue $config.verification 'sourceOnlyTestReady' $false)
+    $dependencyBundleRequired = [bool](Get-ConfigValue $config.verification 'dependencyBundleRequired' $true)
+    # A source-only archive is test-ready only when the project explicitly
+    # declares that its verification needs no dependency bundle. Bundled
+    # projects retain the existing manifest validation and readiness behavior.
+    $testReady = ($null -ne $bundle) -or ($sourceOnly -and $sourceOnlyTestReady -and -not $dependencyBundleRequired)
+    $warning = if ($blockingReason) {
+        $blockingReason
+    } elseif ($bundle) {
+        'Dependency bundle metadata passed; still use only the declared offline Linux environment.'
+    } elseif ($testReady) {
+        'Source-only package; verification is declared to require no dependency bundle.'
+    } else {
+        'Source-only package; install no dependencies in the sandbox. testReady=false.'
+    }
     $provenance = [ordered]@{
         schemaVersion = 1
         packageType = 'notion-sandbox'
@@ -207,7 +225,7 @@ try {
         commit = $commit
         sourceArchiveSha256 = $sourceArchiveHash
         generatedAtUtc = [DateTime]::UtcNow.ToString('o')
-        sourceOnly = (-not $testReady)
+        sourceOnly = $sourceOnly
         testReady = $testReady
         testCommand = $testCommand
         baselineStatus = $baselineStatus
@@ -217,7 +235,7 @@ try {
         docker = 'unsupported'
         database = 'unsupported'
         patchCommand = [string](Get-ConfigValue $config.packaging 'patchCommand' 'git diff --binary > changes.patch')
-        warning = if ($blockingReason) { $blockingReason } elseif ($testReady) { 'Dependency bundle metadata passed; still use only the declared offline Linux environment.' } else { 'Source-only package; install no dependencies in the sandbox. testReady=false.' }
+        warning = $warning
     }
     $generatedDoc = @"
 # Notion sandbox hand-off
@@ -240,7 +258,7 @@ Create a Git baseline after extraction, make the requested business-logic edits,
     git commit -m "Notion sandbox baseline"
     git diff --binary > changes.patch
 
-The source-only package intentionally has testReady=false. A dependency-enabled package is test-ready only when the caller supplied an explicitly declared Linux x64 bundle whose manifest passed the exporter checks.
+The source-only package is test-ready only when verification explicitly sets sourceOnlyTestReady=true and dependencyBundleRequired=false. A dependency-enabled package is test-ready only when the caller supplied an explicitly declared Linux x64 bundle whose manifest passed the exporter checks.
 "@
     Add-ZipText -ZipPath $tempArchive -EntryName 'NOTION_SANDBOX/PROVENANCE.json' -Text (($provenance | ConvertTo-Json -Depth 10) + "`n")
     Add-ZipText -ZipPath $tempArchive -EntryName 'NOTION_SANDBOX/README.md' -Text $generatedDoc
