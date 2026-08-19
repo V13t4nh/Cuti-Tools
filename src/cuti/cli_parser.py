@@ -54,6 +54,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="case form (default: unknown)",
     )
 
+    evaluate_cmd = sub.add_parser("evaluate", help="evaluate one Buyer deal")
+    evaluate_cmd.add_argument("--query", required=True, help="watch model or title")
+    evaluate_cmd.add_argument("--cost", required=True, type=float, help="buying cost")
+    evaluate_cmd.add_argument("--currency", choices=("vnd", "eur"), required=True)
+    evaluate_cmd.add_argument(
+        "--condition",
+        choices=[item.value for item in Condition],
+        required=True,
+        help="explicit condition cluster",
+    )
+
     sub.add_parser("watch", help="ingest the VN deal feed and alert on green lights")
     sub.add_parser("liquidity", help="rank brands by liquidity index")
     sub.add_parser("report", help="write the static HTML report")

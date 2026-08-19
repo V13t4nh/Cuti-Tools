@@ -6,7 +6,32 @@ from datetime import date, datetime
 from types import SimpleNamespace
 from typing import Callable, Mapping
 
+from .evaluation import cost_to_eur
 from .models import Condition, WatchForm
+
+
+def _evaluation_payload(result: object) -> dict[str, object]:
+    """Serialize the pure evaluator without coupling it to a UI."""
+    return {
+        "query": result.query,
+        "model_key": result.model_key,
+        "condition": result.condition.value,
+        "cost_eur": result.cost_eur,
+        "verdict": result.verdict.value,
+        "reason": result.reason,
+        "sample_size": result.sample_size,
+        "attempt_count": result.attempt_count,
+        "liquidity_index": result.liquidity_index,
+        "liquidity_sell_through": result.liquidity_sell_through,
+        "net_p25_eur": result.net_p25_eur,
+        "net_median_eur": result.net_median_eur,
+        "net_p75_eur": result.net_p75_eur,
+        "net_profit_p25_eur": result.net_profit_p25_eur,
+        "net_profit_median_eur": result.net_profit_median_eur,
+        "net_profit_p75_eur": result.net_profit_p75_eur,
+        "threshold_eur": result.threshold_eur,
+        "median_days_to_close": result.median_days_to_close,
+    }
 
 
 def execute(
@@ -60,6 +85,17 @@ def execute(
             args.json,
             [f"Model    : {report.model_key} ({report.condition.value}/{report.form.value})", f"Verdict  : {price.verdict.value.upper()}", f"Sample   : {price.sample_size}/{price.attempt_count} sold/attempts", f"Cost     : {price.cost_eur:,.0f} EUR", f"Threshold: {price.threshold_eur:,.0f} EUR", "Net p25/med/p75: " + ("n/a" if price.net_min_eur is None else f"{price.net_min_eur:,.0f} / {price.net_avg_eur:,.0f} / {price.net_max_eur:,.0f} EUR")],
         )
+    elif args.command == "evaluate":
+        result = operations["evaluate_deal"](
+            conn,
+            rules,
+            settings,
+            query=args.query,
+            cost_eur=cost_to_eur(args.cost, args.currency, settings),
+            condition=Condition(args.condition),
+            today=today,
+        )
+        emit(_evaluation_payload(result), True, [])
     elif args.command == "watch":
         notifier = operations["build_notifier"](settings)
         report = operations["watch_deals"](conn, rules, settings, notifier, today=today, now=now)

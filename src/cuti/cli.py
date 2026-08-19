@@ -14,6 +14,7 @@ from .cli_parser import _parse_day, build_parser
 from .config import BUSINESS_TIMEZONE, load_settings
 from .errors import CutiError
 from .fetch import fetch_text
+from .evaluation import evaluate_deal
 from .liquidity import compute_liquidity
 from .models import Condition, WatchForm
 from .normalize import load_rules
@@ -56,6 +57,7 @@ def run(argv: Sequence[str] | None = None) -> int:
         "ingest_lots": ingest_lots,
         "ingest_one_lot": ingest_one_lot,
         "quote_watch": quote_watch,
+        "evaluate_deal": evaluate_deal,
         "settle_lots": settle_lots,
         "watch_deals": watch_deals,
         "watch_live": watch_live,
