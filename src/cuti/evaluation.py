@@ -7,7 +7,7 @@ import math
 from dataclasses import dataclass
 from datetime import date
 
-from .comparables import find_comparables
+from .comparables import ScoredLot, find_comparables
 from .config import Settings
 from .errors import PricingError, ScrapeError
 from .liquidity import heart_to_hammer_rate
@@ -91,13 +91,117 @@ class DealEvaluation:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class ComparisonChartData:
+    """Sold hammer prices and the buyer's break-even hammer price."""
+
+    hammer_prices_eur: tuple[int, ...]
+    input_hammer_eur: float | None
+
+
+def _cost_vnd(cost: float | int, currency: str, settings: Settings) -> int:
+    """Adapt the raw buyer input to pricing.quote's VND contract once."""
+    if currency == "vnd":
+        if isinstance(cost, bool) or not isinstance(cost, (int, float)):
+            raise PricingError("cost must be a number")
+        if not math.isfinite(float(cost)) or cost <= 0 or not float(cost).is_integer():
+            raise PricingError("vnd cost must be a finite whole number > 0")
+        return int(cost)
+    if currency == "eur":
+        cost_eur = cost_to_eur(cost, currency, settings)
+        return int(round(cost_eur * settings.eur_vnd_rate))
+    raise PricingError("currency must be one of: vnd, eur")
+
+
+def _matching_items(
+    conn: sqlite3.Connection,
+    rules: Rules,
+    settings: Settings,
+    *,
+    query: str,
+    condition: Condition,
+    today: date,
+) -> tuple[str, list[ScoredLot]]:
+    classification = classify(query, rules)
+    return classification.model_key, find_comparables(
+        conn,
+        title=query,
+        condition=condition,
+        rules=rules,
+        settings=settings,
+        today=today,
+    )
+
+
+def _chart_hammers(
+    conn: sqlite3.Connection,
+    rules: Rules,
+    settings: Settings,
+    *,
+    query: str,
+    condition: Condition,
+    today: date,
+) -> tuple[list[ScoredLot], list[int]]:
+    _, matches = _matching_items(
+        conn, rules, settings, query=query, condition=condition, today=today
+    )
+    if len(matches) < settings.min_comparables:
+        return matches, []
+    sold = [item for item in matches if item.lot.sold]
+    hammers = [item.lot.hammer_eur for item in sold]
+    if any(value is None for value in hammers):
+        raise ValueError("a sold comparable is missing its hammer price")
+    return matches, [int(value) for value in hammers if value is not None]
+
+
+def comparison_chart_data(
+    conn: sqlite3.Connection,
+    rules: Rules,
+    settings: Settings,
+    *,
+    query: str,
+    cost: float | int,
+    currency: str,
+    condition: Condition | str,
+    today: date | None = None,
+) -> ComparisonChartData:
+    """Return chart inputs without adding chart state to ``DealEvaluation``."""
+    if not query.strip():
+        raise ScrapeError("query must not be empty")
+    effective_condition = Condition.parse(condition) if isinstance(condition, str) else condition
+    reference_day = today or date.today()
+    cost_vnd = _cost_vnd(cost, currency, settings)
+    matches, hammers = _chart_hammers(
+        conn,
+        rules,
+        settings,
+        query=query,
+        condition=effective_condition,
+        today=reference_day,
+    )
+    if len(matches) < settings.min_comparables:
+        return ComparisonChartData(hammer_prices_eur=(), input_hammer_eur=None)
+    price = quote(
+        hammers,
+        [item.lot.days_to_close for item in matches if item.lot.sold],
+        cost_vnd,
+        settings,
+        attempt_count=len(matches),
+    )
+    return ComparisonChartData(
+        hammer_prices_eur=tuple(hammers),
+        input_hammer_eur=price.break_even_hammer_eur,
+    )
+
+
 def evaluate_deal(
     conn: sqlite3.Connection,
     rules: Rules,
     settings: Settings,
     *,
     query: str,
-    cost_eur: float,
+    cost: float | int,
+    currency: str,
     condition: Condition | str,
     today: date | None = None,
 ) -> DealEvaluation:
@@ -105,22 +209,10 @@ def evaluate_deal(
     if not query.strip():
         raise ScrapeError("query must not be empty")
     effective_condition = Condition.parse(condition) if isinstance(condition, str) else condition
-    if isinstance(cost_eur, bool) or not isinstance(cost_eur, (int, float)):
-        raise PricingError("cost_eur must be a number")
-    if not math.isfinite(float(cost_eur)) or cost_eur <= 0:
-        raise PricingError("cost_eur must be a finite value > 0")
     reference_day = today or date.today()
-    # pricing.quote's public contract is VND.  Round once at this boundary so
-    # VND and EUR adapters converge to the same canonical integer input.
-    cost_vnd = int(round(cost_eur * settings.eur_vnd_rate))
-    classification = classify(query, rules)
-    matches = find_comparables(
-        conn,
-        title=query,
-        condition=effective_condition,
-        rules=rules,
-        settings=settings,
-        today=reference_day,
+    cost_vnd = _cost_vnd(cost, currency, settings)
+    model_key, matches = _matching_items(
+        conn, rules, settings, query=query, condition=effective_condition, today=reference_day
     )
     sold = [item for item in matches if item.lot.sold]
     if len(matches) < settings.min_comparables:
@@ -141,7 +233,7 @@ def evaluate_deal(
     )
     return DealEvaluation.from_quote(
         query=query,
-        model_key=classification.model_key,
+        model_key=model_key,
         condition=effective_condition,
         price=price,
         minimum_comparables=settings.min_comparables,

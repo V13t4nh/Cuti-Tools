@@ -6,12 +6,53 @@ import sqlite3
 import json
 from collections import defaultdict
 from datetime import date, timedelta
+import math
 from typing import Any, Iterable
 
 from .config import Settings
 from .models import Condition, Lot
 from .pricing import percentile
 from .storage import fetch_lots_for_liquidity, fetch_lots_for_model
+from .report import Histogram, build_histogram
+
+
+def hammer_histogram(values: list[int], *, bins: int) -> Histogram:
+    """Build a deterministic, stdlib-only histogram for hammer prices."""
+    if bins < 1:
+        raise ValueError(f"bins must be >= 1, got {bins}")
+    if not values:
+        return Histogram(edges=(), counts=())
+    if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
+        raise TypeError("hammer values must be integers")
+    # Keep the report's established equal-width convention in one place.
+    result = build_histogram(values, bins=bins)
+    return Histogram(edges=result.edges, counts=result.counts)
+
+
+def price_position(value: float, values: list[int]) -> float | None:
+    """Return the linearly interpolated percentile position of ``value``."""
+    if not values:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError("price value must be numeric")
+    if not math.isfinite(float(value)):
+        raise ValueError("price value must be finite")
+    ordered = sorted(values)
+    if any(isinstance(item, bool) or not isinstance(item, (int, float)) for item in ordered):
+        raise TypeError("hammer values must be numeric")
+    if len(ordered) == 1 or ordered[0] == ordered[-1]:
+        return 0.0
+    if value < ordered[0]:
+        return 0.0
+    if value > ordered[-1]:
+        return 1.0
+    for index in range(len(ordered) - 1):
+        low, high = ordered[index], ordered[index + 1]
+        if low == high:
+            continue
+        if low <= value <= high:
+            return (index + (value - low) / (high - low)) / (len(ordered) - 1)
+    raise ValueError("price position could not be determined")
 
 
 class _FallbackFigure:

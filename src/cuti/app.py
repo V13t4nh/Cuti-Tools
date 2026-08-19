@@ -1,9 +1,4 @@
-"""Single-page Streamlit decision screen for buyers.
-
-The optional UI layer is deliberately thin: ``evaluate_deal`` owns every
-pricing, comparable and liquidity decision. This module only collects input,
-converts the buyer's currency, and renders the typed result.
-"""
+"""Single-page Streamlit decision screen for buyers."""
 
 from __future__ import annotations
 
@@ -11,7 +6,13 @@ from typing import Any
 
 from cuti.config import load_settings
 from cuti.errors import CutiError
-from cuti.evaluation import DealEvaluation, cost_to_eur, evaluate_deal
+from cuti.charts import hammer_histogram, price_position
+from cuti.evaluation import (
+    ComparisonChartData,
+    DealEvaluation,
+    comparison_chart_data,
+    evaluate_deal,
+)
 from cuti.models import Condition
 from cuti.normalize import load_rules
 from cuti.storage import connect
@@ -61,6 +62,19 @@ def _money_days(value: float | None) -> str:
     return "—" if value is None else f"{value:.1f} ngày"
 
 
+def _render_distribution(chart: ComparisonChartData, st: Any) -> None:
+    if chart.input_hammer_eur is None:
+        return
+    values = list(chart.hammer_prices_eur)
+    position = price_position(chart.input_hammer_eur, values)
+    if position is None:
+        return
+    histogram = hammer_histogram(values, bins=8)
+    st.subheader("Phân phối hammer price")
+    st.bar_chart(histogram.counts)
+    st.metric("Vị trí giá nhập trong pool", f"{position:.0%}")
+
+
 def main() -> None:
     import streamlit as st
 
@@ -90,10 +104,22 @@ def main() -> None:
                 rules,
                 settings,
                 query=query,
-                cost_eur=cost_to_eur(amount, currency, settings),
+                cost=amount,
+                currency=currency,
                 condition=Condition.parse(condition),
             )
             _render_result(result, st)
+            if result.verdict.value != "insufficient_data":
+                chart = comparison_chart_data(
+                    conn,
+                    rules,
+                    settings,
+                    query=query,
+                    cost=amount,
+                    currency=currency,
+                    condition=Condition.parse(condition),
+                )
+                _render_distribution(chart, st)
     except CutiError as exc:
         st.error(str(exc))
 

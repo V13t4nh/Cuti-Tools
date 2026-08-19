@@ -149,6 +149,14 @@ CUTI_TELEGRAM_BOT_TOKEN=...
 CUTI_TELEGRAM_CHAT_ID=...
 ```
 
+### Ngưỡng dữ liệu so sánh
+
+`CUTI_MIN_COMPARABLES` chi phối verdict theo **số lot đã bán**. Trong khi đó,
+`sell_through_rate` và `heart_to_hammer_rate` chỉ được tính khi **tổng số lot
+trong pool** (đã bán và chưa bán) đạt ngưỡng này. Vì vậy pool có 6 lot nhưng
+chỉ 2 lot đã bán sẽ trả `insufficient_data`, đồng thời vẫn báo
+`sell_through_rate = 0.33`; không có Net Profit được suy đoán.
+
 Alert Xanh được ghi vào SQLite outbox cùng transaction với quote. Nếu Telegram
 lỗi, alert trở lại trạng thái pending và retry ở lần `watch` sau; quá số lần cấu
 hình sẽ vào `dead`, không bị báo nhầm là đã gửi. Outbox vẫn được drain nếu fetch

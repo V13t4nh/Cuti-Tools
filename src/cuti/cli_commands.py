@@ -6,7 +6,7 @@ from datetime import date, datetime
 from types import SimpleNamespace
 from typing import Callable, Mapping
 
-from .evaluation import DealEvaluation, cost_to_eur
+from .evaluation import DealEvaluation
 from .models import Condition, WatchForm
 
 
@@ -88,7 +88,8 @@ def execute(
             rules,
             settings,
             query=args.query,
-            cost_eur=cost_to_eur(args.cost, args.currency, settings),
+            cost=args.cost,
+            currency=args.currency,
             condition=Condition(args.condition),
             today=today,
         )

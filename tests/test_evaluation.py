@@ -8,6 +8,7 @@ import math
 from dataclasses import replace
 from datetime import date
 from contextlib import redirect_stdout
+from unittest.mock import patch
 
 from cuti.cli import main
 from cuti.evaluation import cost_to_eur, evaluate_deal
@@ -34,20 +35,21 @@ class EvaluationTests(ProjectTestCase):
             ]
         )
 
-    def _evaluate(self, cost_eur=1000, condition=Condition.NAKED):
+    def _evaluate(self, cost=1000, currency="eur", condition=Condition.NAKED):
         return evaluate_deal(
             self.conn,
             self.rules,
             self.settings,
             query=QUERY,
-            cost_eur=cost_eur,
+            cost=cost,
+            currency=currency,
             condition=condition,
             today=TODAY,
         )
 
     def test_percentiles_and_threshold_verdict(self):
         self._seed()
-        result = self._evaluate(cost_eur=100)
+        result = self._evaluate(cost=100)
         self.assertLessEqual(result.net_p25_eur, result.net_median_eur)
         self.assertLessEqual(result.net_median_eur, result.net_p75_eur)
         self.assertEqual(result.verdict, Verdict.GREEN)
@@ -55,7 +57,7 @@ class EvaluationTests(ProjectTestCase):
 
     def test_expensive_input_is_red_at_threshold(self):
         self._seed()
-        self.assertEqual(self._evaluate(cost_eur=100_000).verdict, Verdict.RED)
+        self.assertEqual(self._evaluate(cost=100_000).verdict, Verdict.RED)
 
     def test_thin_pool_has_no_guessed_profit(self):
         self._seed(count=2)
@@ -69,11 +71,15 @@ class EvaluationTests(ProjectTestCase):
 
     def test_vnd_and_eur_adapters_converge(self):
         self._seed()
-        vnd_cost = cost_to_eur(27_000_000, "vnd", self.settings)
-        eur_cost = cost_to_eur(1000, "eur", self.settings)
-        vnd = self._evaluate(cost_eur=vnd_cost)
-        eur = self._evaluate(cost_eur=eur_cost)
+        vnd = self._evaluate(cost=27_000_000, currency="vnd")
+        eur = self._evaluate(cost=1000, currency="eur")
         self.assertEqual(vnd, eur)
+
+    def test_vnd_input_goes_directly_to_quote(self):
+        self._seed()
+        with patch("cuti.evaluation.cost_to_eur", side_effect=AssertionError("unexpected conversion")):
+            result = self._evaluate(cost=27_000_000, currency="vnd")
+        self.assertEqual(result.cost_eur, 1000.0)
 
     def test_hot_heart_conversion_rate_uses_sold_hot_pool(self):
         self.seed_lots(
@@ -97,7 +103,7 @@ class EvaluationTests(ProjectTestCase):
 
     def test_no_hot_lots_have_no_conversion_rate_and_price_verdict(self):
         self._seed()
-        result = self._evaluate(cost_eur=100)
+        result = self._evaluate(cost=100)
         self.assertIsNone(result.heart_to_hammer_rate)
         self.assertEqual(result.verdict, Verdict.GREEN)
 
@@ -132,7 +138,7 @@ class EvaluationTests(ProjectTestCase):
     def test_cost_eur_rejects_non_finite_and_bool(self):
         for invalid in (True, False, math.nan, math.inf, -math.inf):
             with self.subTest(invalid=invalid), self.assertRaises(PricingError):
-                self._evaluate(cost_eur=invalid)
+                self._evaluate(cost=invalid)
 
     def test_pending_review_is_excluded(self):
         lot = replace(make_lot("eval-pending", title=QUERY), needs_review=1, review_status="pending")
