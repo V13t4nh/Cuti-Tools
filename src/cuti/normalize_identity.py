@@ -64,6 +64,14 @@ def split_identity(
     if reference is None:
         return IdentityParts(None, None)
     identity = rules.identity
+    key = normalize_text(brand)
+    # Generation/format rules take precedence over caliber-case parsing.  This
+    # keeps modern SKUs such as ``NJ0153-82X`` and ``16234(Y)`` whole even when
+    # they happen to contain a hyphen.
+    if key in identity.modern_brands or any(
+        pattern.fullmatch(reference) for pattern in identity.modern_ref_patterns
+    ):
+        return IdentityParts(None, reference)
     pattern = _rule_for(brand, identity)
     if pattern is not None:
         match = pattern.fullmatch(reference)
@@ -73,11 +81,8 @@ def split_identity(
             case_code = _clean(groups.get("case_code"))
             if caliber is not None and case_code is not None:
                 return IdentityParts(caliber, case_code)
-    key = normalize_text(brand)
     if key in identity.vintage_brands:
         return IdentityParts(extract_caliber(f"{title}\n{description}", identity), reference)
-    if key in identity.modern_brands or any(pattern.fullmatch(reference) for pattern in identity.modern_ref_patterns):
-        return IdentityParts(None, reference)
     return IdentityParts(extract_caliber(f"{title}\n{description}", identity), reference)
 
 

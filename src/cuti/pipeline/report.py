@@ -6,10 +6,11 @@ import sqlite3
 import time
 from dataclasses import dataclass
 from datetime import date, datetime
+from typing import Callable
 
 from ..config import Settings
-from ..errors import ScrapeError
-from ..fetch import probe_url
+from ..errors import FetchError, ScrapeError
+from ..fetch import fetch_text, probe_url
 from ..normalize import Rules
 from ..scrapers import catawiki_api
 from .settlement import persist, settle
@@ -52,6 +53,23 @@ class SourceCheckReport:
     checked: int
     alive: int
     dead: int
+
+
+def _lot_page_fetcher(
+    rows: list[LiveWatchRow], settings: Settings
+) -> Callable[[str], str | None]:
+    urls = {row.lot_id: row.url for row in rows}
+
+    def fetch(lot_id: str) -> str | None:
+        url = urls.get(lot_id)
+        if url is None:
+            return None
+        try:
+            return fetch_text(url, settings.http_timeout_seconds, settings.response_max_bytes)
+        except FetchError:
+            return None
+
+    return fetch
 
 
 def _catawiki_client(
@@ -126,7 +144,10 @@ def settle_lots(
     """Phase 2: read the hammer price of every tracked lot that has closed."""
     client = _catawiki_client(settings, api)
     candidates = fetch_live_watch_due(conn, until=today, limit=settings.settle_max_lots)
-    settlement = settle(client, rules, settings, candidates)
+    settlement = settle(
+        client, rules, settings, candidates,
+        fetch_details=_lot_page_fetcher(candidates, settings),
+    )
     written = persist(conn, settlement, now)
     return SettleReport(
         candidates=len(candidates),
@@ -167,7 +188,10 @@ def ingest_one_lot(
         bidding_end_at=None,
     )
     upsert_live_watch(conn, [row], now)
-    settlement = settle(client, rules, settings, [row])
+    settlement = settle(
+        client, rules, settings, [row],
+        fetch_details=_lot_page_fetcher([row], settings),
+    )
     written = persist(conn, settlement, now)
     return SettleReport(
         candidates=1,

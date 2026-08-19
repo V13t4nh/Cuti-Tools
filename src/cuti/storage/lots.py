@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 import json
 import zlib
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Iterable
 
@@ -42,8 +42,7 @@ def _row_to_lot(row: sqlite3.Row) -> Lot:
         )
         if name in row.keys()
     }
-    values.update({name: value for name, value in extras.items()
-                   if name in {item.name for item in fields(Lot)}})
+    values.update(extras)
     return Lot(**values)
 
 
@@ -58,12 +57,12 @@ def upsert_lots(conn: sqlite3.Connection, lots: Iterable[Lot], now: datetime) ->
     with conn:
         for lot in lots:
             extras = {
-                name: getattr(lot, name, None)
-                for name in (
-                    "model", "ref_number", "caliber", "case_code", "movement",
-                    "case_material", "case_diameter_mm", "specs_json", "ai_json",
-                    "needs_review", "review_status", "reviewed_at", "override_json",
-                )
+                "model": lot.model, "ref_number": lot.ref_number, "caliber": lot.caliber,
+                "case_code": lot.case_code, "movement": lot.movement,
+                "case_material": lot.case_material, "case_diameter_mm": lot.case_diameter_mm,
+                "specs_json": lot.specs_json, "ai_json": lot.ai_json,
+                "needs_review": lot.needs_review, "review_status": lot.review_status,
+                "reviewed_at": lot.reviewed_at, "override_json": lot.override_json,
             }
             for name in ("specs_json", "ai_json", "override_json"):
                 if isinstance(extras[name], (dict, list)):
@@ -113,7 +112,7 @@ def upsert_lots(conn: sqlite3.Connection, lots: Iterable[Lot], now: datetime) ->
                     extras["override_json"], timestamp,
                 ),
             )
-            description = getattr(lot, "description", None)
+            description = lot.description
             if description is not None:
                 conn.execute(
                     "INSERT INTO lot_desc(lot_id, desc_z) VALUES (?, ?) "

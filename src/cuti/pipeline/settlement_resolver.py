@@ -48,24 +48,16 @@ def _object(value: Any, name: str) -> dict[str, Any]:
     if is_dataclass(value):
         value = asdict(value)
     elif not isinstance(value, Mapping):
-        value = {key: getattr(value, key) for key in _FIELDS if hasattr(value, key)}
-    if not isinstance(value, Mapping):
         raise NormalizationError(f"{name}: expected an object")
     return dict(value)
-
-
 def _key(value: Any) -> str | None:
     normalized = normalize_text(str(value))
     return _KEYS.get(normalized, normalized if normalized in _FIELDS else None)
-
-
 def _text(value: Any) -> str | None:
     if value is None or isinstance(value, bool):
         return None
     result = " ".join(str(value).strip().split())
     return result or None
-
-
 def _enum(value: Any, allowed: tuple[str, ...]) -> str | None:
     text = normalize_text(str(value)) if value is not None else ""
     if not text:
@@ -73,10 +65,9 @@ def _enum(value: Any, allowed: tuple[str, ...]) -> str | None:
     if text in allowed:
         return text
     return None
-
-
-def _typed_values(mapping: Mapping[str, Any], rules: Rules) -> dict[str, list[Any]]:
+def _typed_values(mapping: Mapping[str, Any], rules: Rules) -> tuple[dict[str, list[Any]], int]:
     result: dict[str, list[Any]] = {field: [] for field in _FIELDS}
+    needs_review = 0
     for raw_key, raw_value in mapping.items():
         field = _key(raw_key)
         if field is None:
@@ -89,9 +80,13 @@ def _typed_values(mapping: Mapping[str, Any], rules: Rules) -> dict[str, list[An
             value = _text(raw_value)
         elif field == "movement":
             value = _enum(raw_value, ("auto", "automatic", "manual", "quartz"))
+            normalized = normalize_text(str(raw_value)) if raw_value is not None else ""
+            needs_review |= int(bool(normalized) and normalized not in {"auto", "automatic", "manual", "quartz"})
             value = {"automatic": "auto"}.get(value, value)
         elif field == "case_material":
             value = _enum(raw_value, ("steel", "gold", "gold plated", "titanium", "other"))
+            normalized = normalize_text(str(raw_value)) if raw_value is not None else ""
+            needs_review |= int(bool(normalized) and normalized not in {"steel", "gold", "gold plated", "titanium", "other"})
             value = {"gold plated": "gold_plated"}.get(value, value)
         elif field == "case_diameter_mm":
             try:
@@ -101,7 +96,7 @@ def _typed_values(mapping: Mapping[str, Any], rules: Rules) -> dict[str, list[An
             value = number if number is not None and 15 <= number <= 60 else None
         if value is not None:
             result[field].append(value)
-    return result
+    return result, needs_review
 
 
 def _parse_text(text: str | None, rules: Rules) -> dict[str, list[Any]]:
@@ -233,13 +228,17 @@ def resolve_typed_fields(
     detail_obj = _object(details, "details")
     raw_details = detail_obj.get("details") if isinstance(detail_obj.get("details"), Mapping) else {}
     raw_details = {**detail_obj, **raw_details}
-    override = _derive_source(_typed_values(_object(override_json, "override_json"), rules), "", rules)
-    details_values = _derive_source(_typed_values(raw_details, rules), "", rules)
+    override_values, override_review = _typed_values(_object(override_json, "override_json"), rules)
+    details_values, details_review = _typed_values(raw_details, rules)
+    override = _derive_source(override_values, "", rules)
+    details_values = _derive_source(details_values, "", rules)
     title_values = _derive_source(_parse_text(title, rules), title, rules)
     description_values = _derive_source(_parse_text(description, rules), description or "", rules)
-    ai_values = _derive_source(_typed_values(_object(ai_json, "ai_json"), rules), "", rules)
+    ai_values, ai_review = _typed_values(_object(ai_json, "ai_json"), rules)
+    ai_values = _derive_source(ai_values, "", rules)
     sources = [(4, override), (3, details_values), (2, title_values), (2, description_values), (1, ai_values)]
     values, review, blocked = _merge_sources(sources)
+    review |= override_review | details_review | ai_review
     _identity(values, title, description, rules, blocked)
     model_key, tier = _model_key(values, title)
     specs = {"model_key_tier": tier}

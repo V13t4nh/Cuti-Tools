@@ -4,8 +4,8 @@
   "baselineStatus": "green",
   "blockingReason": null,
   "testCommand": "make verify",
-  "testsRun": 227,
-  "testsPassed": 227,
+  "testsRun": 250,
+  "testsPassed": 250,
   "testsFailed": 0,
   "exitCode": 0
 }

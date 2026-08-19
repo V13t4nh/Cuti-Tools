@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import sqlite3
 import json
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from datetime import datetime
+from typing import Callable
 
 from ..config import Settings
-from ..errors import NormalizationError
+from ..errors import FetchError, NormalizationError
 from ..models import Lot, WatchForm
 from ..normalize import Rules, classify
+from ..scrapers.catawiki_lot_page import parse_lot_page
 from .settlement_resolver import resolve_typed_fields
 from ..scrapers import catawiki_api
 from ..storage import LiveWatchRow, delete_live_watch, upsert_live_watch, upsert_lots
@@ -41,12 +43,8 @@ def _settled_lot(
     classification = classify(row.title, rules)
     if classification.condition is None:
         raise NormalizationError(f"{row.lot_id}: title states no condition")
-    row_details = details if details is not None else getattr(row, "details", None)
-    row_description = description or getattr(row, "description", None)
-    if row_description is None and row_details is not None:
-        row_description = getattr(row_details, "description", None)
-    if row_description is None and isinstance(row_details, dict):
-        row_description = row_details.get("description")
+    row_details = details
+    row_description = description
     resolved = resolve_typed_fields(
         row.title,
         rules,
@@ -72,7 +70,6 @@ def _settled_lot(
         "subtitle": row.subtitle,
         "bids_count": outcome.bids_count,
     }
-    lot_names = {item.name for item in fields(Lot)}
     extras: dict[str, object] = {
         "model": resolved.model,
         "ref_number": resolved.ref_number,
@@ -91,7 +88,7 @@ def _settled_lot(
         ),
         "description": row_description,
     }
-    values.update({name: value for name, value in extras.items() if name in lot_names})
+    values.update(extras)
     return Lot(
         **values,
     )
@@ -102,6 +99,8 @@ def settle(
     rules: Rules,
     settings: Settings,
     candidates: list[LiveWatchRow],
+    *,
+    fetch_details: Callable[[str], str | None] | None = None,
 ) -> _Settlement:
     """Read final state for every candidate without writing anything."""
     by_id = {row.lot_id: row for row in candidates}
@@ -133,7 +132,19 @@ def settle(
                 result.still_open += 1
                 continue
             try:
-                lot = _settled_lot(row, state, outcome, rules)
+                try:
+                    html = fetch_details(lot_id) if fetch_details is not None else None
+                except FetchError:
+                    html = None
+                page = parse_lot_page(html, rules=rules) if html is not None else None
+                lot = _settled_lot(
+                    row,
+                    state,
+                    outcome,
+                    rules,
+                    details=page,
+                    description=page.description if page is not None else None,
+                )
             except NormalizationError:
                 result.unclassified += 1
                 result.finished.append(lot_id)
