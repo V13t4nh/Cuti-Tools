@@ -43,6 +43,14 @@ class LiquidityReport:
         return tuple(sorted(totals.items()))
 
 
+def heart_to_hammer_rate(lots: list[Lot], settings: Settings) -> float | None:
+    """Return the sold rate among lots meeting the configured heart threshold."""
+    hot_lots = [lot for lot in lots if lot.hearts >= settings.liquidity_hot_hearts]
+    if not hot_lots:
+        return None
+    return sum(1 for lot in hot_lots if lot.sold) / len(hot_lots)
+
+
 def _metrics(lots: list[Lot], settings: Settings) -> tuple[int, float, float | None, float, float, float]:
     sold_lots = [lot for lot in lots if lot.sold]
     sell_through = len(sold_lots) / len(lots)
@@ -52,16 +60,14 @@ def _metrics(lots: list[Lot], settings: Settings) -> tuple[int, float, float | N
     else:
         median_days = None
         speed = 0.0
-    hot_lots = [lot for lot in lots if lot.hearts >= settings.liquidity_hot_hearts]
-    heart_to_hammer = (
-        sum(1 for lot in hot_lots if lot.sold) / len(hot_lots) if hot_lots else 0.0
-    )
+    heart_to_hammer = heart_to_hammer_rate(lots, settings)
+    aggregate_heart_rate = heart_to_hammer if heart_to_hammer is not None else 0.0
     index = (
         settings.liquidity_w_sell_through * sell_through
         + settings.liquidity_w_speed * speed
-        + settings.liquidity_w_hearts * heart_to_hammer
+        + settings.liquidity_w_hearts * aggregate_heart_rate
     )
-    return len(sold_lots), sell_through, median_days, speed, heart_to_hammer, index
+    return len(sold_lots), sell_through, median_days, speed, aggregate_heart_rate, index
 
 
 def _quarter_start(day: date) -> date:

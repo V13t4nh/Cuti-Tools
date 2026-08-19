@@ -12,9 +12,9 @@ Vòng bàn giao: bạn -> zip -> nghiệm thu -> prompt task mới -> bạn.
 ## 1. Bối cảnh repo
 Do người nghiệm thu cung cấp, cập nhật khi ràng buộc bền đổi. Không đổi theo task.
 Trống thì hỏi — không đoán, không tự thiết kế.
-- Lệnh verify:
-- Trần LOC mỗi file:
-- Ràng buộc schema / kiến trúc / stack:
+- Lệnh verify: `make verify` (thân lệnh: `scripts/verify.py`, chạy offline, không cài dep)
+- Trần LOC mỗi file: 250 dòng vật lý trong `src/cuti`, khoá bởi `tests/test_source_line_limits.py`
+- Ràng buộc schema / kiến trúc / stack: SQLite 1 file + FTS5; lõi chỉ dùng stdlib (streamlit/plotly/rapidfuzz chỉ nằm trong optional-dependencies.ui và chỉ import bên trong hàm UI); không sửa `src/cuti/pricing.py`, `src/cuti/storage/schema_ddl.py`, `config/rules.json` trừ khi prompt nói rõ.
 Việc cần làm KHÔNG nằm ở đây. Nó đến từ prompt mỗi lần bàn giao, kèm spec liên quan
 và tiêu chí xong. Prompt mới thay prompt cũ.
 

@@ -6,11 +6,11 @@ from datetime import date, datetime
 from types import SimpleNamespace
 from typing import Callable, Mapping
 
-from .evaluation import cost_to_eur
+from .evaluation import DealEvaluation, cost_to_eur
 from .models import Condition, WatchForm
 
 
-def _evaluation_payload(result: object) -> dict[str, object]:
+def _evaluation_payload(result: DealEvaluation) -> dict[str, object]:
     """Serialize the pure evaluator without coupling it to a UI."""
     return {
         "query": result.query,
@@ -21,14 +21,11 @@ def _evaluation_payload(result: object) -> dict[str, object]:
         "reason": result.reason,
         "sample_size": result.sample_size,
         "attempt_count": result.attempt_count,
-        "liquidity_index": result.liquidity_index,
-        "liquidity_sell_through": result.liquidity_sell_through,
+        "sell_through_rate": result.sell_through_rate,
+        "heart_to_hammer_rate": result.heart_to_hammer_rate,
         "net_p25_eur": result.net_p25_eur,
         "net_median_eur": result.net_median_eur,
         "net_p75_eur": result.net_p75_eur,
-        "net_profit_p25_eur": result.net_profit_p25_eur,
-        "net_profit_median_eur": result.net_profit_median_eur,
-        "net_profit_p75_eur": result.net_profit_p75_eur,
         "threshold_eur": result.threshold_eur,
         "median_days_to_close": result.median_days_to_close,
     }

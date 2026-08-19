@@ -10,6 +10,7 @@ from datetime import date
 from .comparables import find_comparables
 from .config import Settings
 from .errors import PricingError, ScrapeError
+from .liquidity import heart_to_hammer_rate
 from .models import Condition, Verdict
 from .normalize import Rules, classify
 from .pricing import PriceQuote, quote
@@ -40,29 +41,13 @@ class DealEvaluation:
     reason: str
     sample_size: int
     attempt_count: int
-    liquidity_index: float
+    sell_through_rate: float | None
+    heart_to_hammer_rate: float | None
     net_p25_eur: float | None
     net_median_eur: float | None
     net_p75_eur: float | None
     threshold_eur: float
     median_days_to_close: float | None
-
-    @property
-    def liquidity_sell_through(self) -> float:
-        """Condition/model sell-through, used as the liquidity indicator."""
-        return self.liquidity_index
-
-    @property
-    def net_profit_p25_eur(self) -> float | None:
-        return self.net_p25_eur
-
-    @property
-    def net_profit_median_eur(self) -> float | None:
-        return self.net_median_eur
-
-    @property
-    def net_profit_p75_eur(self) -> float | None:
-        return self.net_p75_eur
 
     @classmethod
     def from_quote(
@@ -73,6 +58,8 @@ class DealEvaluation:
         condition: Condition,
         price: PriceQuote,
         minimum_comparables: int,
+        sell_through_rate: float | None = None,
+        heart_to_hammer_rate: float | None = None,
     ) -> "DealEvaluation":
         if price.verdict is Verdict.INSUFFICIENT_DATA:
             reason = (
@@ -94,7 +81,8 @@ class DealEvaluation:
             reason=reason,
             sample_size=price.sample_size,
             attempt_count=price.attempt_count,
-            liquidity_index=price.sell_through_rate,
+            sell_through_rate=sell_through_rate,
+            heart_to_hammer_rate=heart_to_hammer_rate,
             net_p25_eur=price.net_p25_eur,
             net_median_eur=price.net_median_eur,
             net_p75_eur=price.net_p75_eur,
@@ -135,6 +123,12 @@ def evaluate_deal(
         today=reference_day,
     )
     sold = [item for item in matches if item.lot.sold]
+    if len(matches) < settings.min_comparables:
+        sell_through_rate = None
+        heart_rate = None
+    else:
+        sell_through_rate = len(sold) / len(matches)
+        heart_rate = heart_to_hammer_rate([item.lot for item in matches], settings)
     hammers = [item.lot.hammer_eur for item in sold]
     if any(value is None for value in hammers):
         raise ValueError("a sold comparable is missing its hammer price")
@@ -151,4 +145,6 @@ def evaluate_deal(
         condition=effective_condition,
         price=price,
         minimum_comparables=settings.min_comparables,
+        sell_through_rate=sell_through_rate,
+        heart_to_hammer_rate=heart_rate,
     )
