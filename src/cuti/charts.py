@@ -55,6 +55,55 @@ def price_position(value: float, values: list[int]) -> float | None:
     raise ValueError("price position could not be determined")
 
 
+def _quarter_key(day: date) -> tuple[int, int]:
+    return day.year, (day.month - 1) // 3
+
+
+def _window_lots(lots: Iterable[Lot], today: date, days: int) -> list[Lot]:
+    start = today - timedelta(days=days - 1)
+    return [lot for lot in lots if start <= lot.ended_at <= today]
+
+
+def cycle_position(
+    lots: Iterable[Lot], *, today: date, window_days: int
+) -> float | None:
+    """Position of the latest quarterly hammer median in the full window."""
+    if window_days < 1:
+        raise ValueError("window_days must be >= 1")
+    grouped: dict[tuple[int, int], list[float]] = defaultdict(list)
+    for lot in _window_lots(lots, today, window_days):
+        if lot.sold and lot.hammer_eur is not None:
+            grouped[_quarter_key(lot.ended_at)].append(float(lot.hammer_eur))
+    if len(grouped) < 3:
+        return None
+    medians = [percentile(grouped[key], 0.5) for key in sorted(grouped)]
+    return price_position(medians[-1], medians)
+
+
+def _heart_speed(lot: Lot) -> float:
+    return lot.hearts / max(lot.days_to_close, 1)
+
+
+def heart_acceleration_rate(
+    lots: Iterable[Lot], *, today: date, window_days: int
+) -> float | None:
+    """Return the relative change in average hearts/day between two windows."""
+    if window_days < 1:
+        raise ValueError("window_days must be >= 1")
+    rows = list(lots)
+    latest = _window_lots(rows, today, window_days)
+    previous = _window_lots(
+        rows, today - timedelta(days=window_days), window_days
+    )
+    if not latest or not previous:
+        return None
+    latest_average = sum(_heart_speed(lot) for lot in latest) / len(latest)
+    previous_average = sum(_heart_speed(lot) for lot in previous) / len(previous)
+    if previous_average == 0:
+        return None
+    return latest_average / previous_average - 1.0
+
+
 class _FallbackFigure:
     """Minimal serializable figure for source-only verification.
 
@@ -144,7 +193,7 @@ def quarterly_median(lots: Iterable[Lot]) -> Any:
 
 def heart_acceleration(lots: Iterable[Lot]) -> Any:
     rows = list(lots)
-    values = [lot.hearts / max(lot.days_to_close, 1) for lot in rows]
+    values = [_heart_speed(lot) for lot in rows]
     average = sum(values) / len(values) if values else 0.0
     colors = ["#16a34a" if value >= average else "#94a3b8" for value in values]
     labels = [lot.lot_id for lot in rows]

@@ -7,12 +7,12 @@ import math
 from dataclasses import dataclass
 from datetime import date
 
-from .comparables import ScoredLot, find_comparables
+from .comparables import ScoredLot
 from .config import Settings
 from .errors import PricingError, ScrapeError
 from .liquidity import heart_to_hammer_rate
 from .models import Condition, Verdict
-from .normalize import Rules, classify
+from .normalize import Rules
 from .pricing import PriceQuote, quote
 
 
@@ -91,14 +91,6 @@ class DealEvaluation:
         )
 
 
-@dataclass(frozen=True, slots=True)
-class ComparisonChartData:
-    """Sold hammer prices and the buyer's break-even hammer price."""
-
-    hammer_prices_eur: tuple[int, ...]
-    input_hammer_eur: float | None
-
-
 def _cost_vnd(cost: float | int, currency: str, settings: Settings) -> int:
     """Adapt the raw buyer input to pricing.quote's VND contract once."""
     if currency == "vnd":
@@ -113,85 +105,44 @@ def _cost_vnd(cost: float | int, currency: str, settings: Settings) -> int:
     raise PricingError("currency must be one of: vnd, eur")
 
 
-def _matching_items(
-    conn: sqlite3.Connection,
-    rules: Rules,
-    settings: Settings,
+def _evaluate_matches(
     *,
     query: str,
+    model_key: str,
     condition: Condition,
-    today: date,
-) -> tuple[str, list[ScoredLot]]:
-    classification = classify(query, rules)
-    return classification.model_key, find_comparables(
-        conn,
-        title=query,
-        condition=condition,
-        rules=rules,
-        settings=settings,
-        today=today,
-    )
-
-
-def _chart_hammers(
-    conn: sqlite3.Connection,
-    rules: Rules,
+    matches: list[ScoredLot],
+    cost_vnd: int,
     settings: Settings,
-    *,
-    query: str,
-    condition: Condition,
-    today: date,
-) -> tuple[list[ScoredLot], list[int]]:
-    _, matches = _matching_items(
-        conn, rules, settings, query=query, condition=condition, today=today
-    )
-    if len(matches) < settings.min_comparables:
-        return matches, []
+) -> tuple[DealEvaluation, PriceQuote, list[int]]:
+    """Apply decision rules and quote once for one already-fetched pool."""
     sold = [item for item in matches if item.lot.sold]
+    if len(matches) < settings.min_comparables:
+        sell_through_rate = None
+        heart_rate = None
+    else:
+        sell_through_rate = len(sold) / len(matches)
+        heart_rate = heart_to_hammer_rate([item.lot for item in matches], settings)
     hammers = [item.lot.hammer_eur for item in sold]
     if any(value is None for value in hammers):
         raise ValueError("a sold comparable is missing its hammer price")
-    return matches, [int(value) for value in hammers if value is not None]
-
-
-def comparison_chart_data(
-    conn: sqlite3.Connection,
-    rules: Rules,
-    settings: Settings,
-    *,
-    query: str,
-    cost: float | int,
-    currency: str,
-    condition: Condition | str,
-    today: date | None = None,
-) -> ComparisonChartData:
-    """Return chart inputs without adding chart state to ``DealEvaluation``."""
-    if not query.strip():
-        raise ScrapeError("query must not be empty")
-    effective_condition = Condition.parse(condition) if isinstance(condition, str) else condition
-    reference_day = today or date.today()
-    cost_vnd = _cost_vnd(cost, currency, settings)
-    matches, hammers = _chart_hammers(
-        conn,
-        rules,
-        settings,
-        query=query,
-        condition=effective_condition,
-        today=reference_day,
-    )
-    if len(matches) < settings.min_comparables:
-        return ComparisonChartData(hammer_prices_eur=(), input_hammer_eur=None)
+    hammer_values = [int(value) for value in hammers if value is not None]
     price = quote(
-        hammers,
-        [item.lot.days_to_close for item in matches if item.lot.sold],
+        hammer_values,
+        [item.lot.days_to_close for item in sold],
         cost_vnd,
         settings,
         attempt_count=len(matches),
     )
-    return ComparisonChartData(
-        hammer_prices_eur=tuple(hammers),
-        input_hammer_eur=price.break_even_hammer_eur,
+    result = DealEvaluation.from_quote(
+        query=query,
+        model_key=model_key,
+        condition=condition,
+        price=price,
+        minimum_comparables=settings.min_comparables,
+        sell_through_rate=sell_through_rate,
+        heart_to_hammer_rate=heart_rate,
     )
+    return result, price, hammer_values
 
 
 def evaluate_deal(
@@ -206,6 +157,8 @@ def evaluate_deal(
     today: date | None = None,
 ) -> DealEvaluation:
     """Evaluate one Buyer input without writing to storage or using the network."""
+    from .evaluation_chart import _matching_items
+
     if not query.strip():
         raise ScrapeError("query must not be empty")
     effective_condition = Condition.parse(condition) if isinstance(condition, str) else condition
@@ -214,29 +167,22 @@ def evaluate_deal(
     model_key, matches = _matching_items(
         conn, rules, settings, query=query, condition=effective_condition, today=reference_day
     )
-    sold = [item for item in matches if item.lot.sold]
-    if len(matches) < settings.min_comparables:
-        sell_through_rate = None
-        heart_rate = None
-    else:
-        sell_through_rate = len(sold) / len(matches)
-        heart_rate = heart_to_hammer_rate([item.lot for item in matches], settings)
-    hammers = [item.lot.hammer_eur for item in sold]
-    if any(value is None for value in hammers):
-        raise ValueError("a sold comparable is missing its hammer price")
-    price = quote(
-        [int(value) for value in hammers if value is not None],
-        [item.lot.days_to_close for item in sold],
-        cost_vnd,
-        settings,
-        attempt_count=len(matches),
-    )
-    return DealEvaluation.from_quote(
+    result, _, _ = _evaluate_matches(
         query=query,
         model_key=model_key,
         condition=effective_condition,
-        price=price,
-        minimum_comparables=settings.min_comparables,
-        sell_through_rate=sell_through_rate,
-        heart_to_hammer_rate=heart_rate,
+        matches=matches,
+        cost_vnd=cost_vnd,
+        settings=settings,
     )
+    return result
+
+
+def comparison_chart_data(*args, **kwargs):
+    """Compatibility re-export for the chart accessor's historical location."""
+    from .evaluation_chart import comparison_chart_data as chart_data
+
+    return chart_data(*args, **kwargs)
+
+
+from .evaluation_chart import ComparisonChartData

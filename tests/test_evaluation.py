@@ -12,6 +12,8 @@ from unittest.mock import patch
 
 from cuti.cli import main
 from cuti.evaluation import cost_to_eur, evaluate_deal
+from cuti.evaluation_chart import BuyerEvaluation, evaluate_deal_with_chart
+from cuti.pricing import quote as pricing_quote
 from cuti.errors import PricingError
 from cuti.models import Condition, Verdict
 
@@ -80,6 +82,47 @@ class EvaluationTests(ProjectTestCase):
         with patch("cuti.evaluation.cost_to_eur", side_effect=AssertionError("unexpected conversion")):
             result = self._evaluate(cost=27_000_000, currency="vnd")
         self.assertEqual(result.cost_eur, 1000.0)
+
+    def test_buyer_bundle_quotes_once_for_one_pool(self):
+        self._seed()
+        with patch("cuti.evaluation.quote", wraps=pricing_quote) as quote_spy:
+            result = evaluate_deal_with_chart(
+                self.conn,
+                self.rules,
+                self.settings,
+                query=QUERY,
+                cost=1000,
+                currency="eur",
+                condition=Condition.NAKED,
+                today=TODAY,
+            )
+        self.assertIsInstance(result, BuyerEvaluation)
+        self.assertEqual(quote_spy.call_count, 1)
+
+    def test_buyer_bundle_exposes_shared_chart_metrics(self):
+        self._seed()
+        with patch(
+            "cuti.evaluation_chart.cycle_position", return_value=0.75
+        ) as cycle, patch(
+            "cuti.evaluation_chart.heart_acceleration_rate", return_value=-0.2
+        ) as hearts:
+            result = evaluate_deal_with_chart(
+                self.conn,
+                self.rules,
+                self.settings,
+                query=QUERY,
+                cost=1000,
+                currency="eur",
+                condition=Condition.NAKED,
+                today=TODAY,
+            )
+        self.assertEqual(result.chart.cycle_position, 0.75)
+        self.assertEqual(result.chart.heart_acceleration_rate, -0.2)
+        self.assertEqual(cycle.call_args.kwargs["today"], TODAY)
+        self.assertEqual(
+            cycle.call_args.kwargs["window_days"], self.settings.comparable_window_days
+        )
+        self.assertEqual(hearts.call_args.kwargs["today"], TODAY)
 
     def test_hot_heart_conversion_rate_uses_sold_hot_pool(self):
         self.seed_lots(

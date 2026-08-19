@@ -7,12 +7,8 @@ from typing import Any
 from cuti.config import load_settings
 from cuti.errors import CutiError
 from cuti.charts import hammer_histogram, price_position
-from cuti.evaluation import (
-    ComparisonChartData,
-    DealEvaluation,
-    comparison_chart_data,
-    evaluate_deal,
-)
+from cuti.evaluation import DealEvaluation
+from cuti.evaluation_chart import BuyerEvaluation, ComparisonChartData, evaluate_deal_with_chart
 from cuti.models import Condition
 from cuti.normalize import load_rules
 from cuti.storage import connect
@@ -63,16 +59,24 @@ def _money_days(value: float | None) -> str:
 
 
 def _render_distribution(chart: ComparisonChartData, st: Any) -> None:
-    if chart.input_hammer_eur is None:
-        return
-    values = list(chart.hammer_prices_eur)
-    position = price_position(chart.input_hammer_eur, values)
-    if position is None:
-        return
-    histogram = hammer_histogram(values, bins=8)
-    st.subheader("Phân phối hammer price")
-    st.bar_chart(histogram.counts)
-    st.metric("Vị trí giá nhập trong pool", f"{position:.0%}")
+    if chart.input_hammer_eur is not None:
+        values = list(chart.hammer_prices_eur)
+        position = price_position(chart.input_hammer_eur, values)
+        if position is not None:
+            histogram = hammer_histogram(values, bins=8)
+            st.subheader("Phân phối hammer price")
+            st.bar_chart(histogram.counts)
+            st.metric("Vị trí giá hoà vốn trong pool", f"{position:.0%}")
+    if chart.cycle_position is not None:
+        st.metric("Vị trí chu kỳ", f"{chart.cycle_position:.0%}")
+    if chart.heart_acceleration_rate is not None:
+        st.metric("Gia tốc tim", f"{chart.heart_acceleration_rate:+.1%}")
+
+
+def _render_buyer_evaluation(result: BuyerEvaluation, st: Any) -> None:
+    _render_result(result.decision, st)
+    if result.decision.verdict.value != "insufficient_data":
+        _render_distribution(result.chart, st)
 
 
 def main() -> None:
@@ -99,7 +103,7 @@ def main() -> None:
             if not submitted:
                 return
             st.subheader("Bước 2 — Tra lịch sử đã bán")
-            result = evaluate_deal(
+            result = evaluate_deal_with_chart(
                 conn,
                 rules,
                 settings,
@@ -108,18 +112,7 @@ def main() -> None:
                 currency=currency,
                 condition=Condition.parse(condition),
             )
-            _render_result(result, st)
-            if result.verdict.value != "insufficient_data":
-                chart = comparison_chart_data(
-                    conn,
-                    rules,
-                    settings,
-                    query=query,
-                    cost=amount,
-                    currency=currency,
-                    condition=Condition.parse(condition),
-                )
-                _render_distribution(chart, st)
+            _render_buyer_evaluation(result, st)
     except CutiError as exc:
         st.error(str(exc))
 
