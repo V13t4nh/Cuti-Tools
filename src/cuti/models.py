@@ -79,6 +79,22 @@ class Lot:
     # False once the public lot page no longer resolves. The snapshot stays the
     # source of truth either way.
     source_available: bool = True
+    # Typed identity captured at settlement. All are optional because source
+    # evidence may be absent or intentionally blocked by a conflict.
+    model: str | None = None
+    ref_number: str | None = None
+    caliber: str | None = None
+    case_code: str | None = None
+    movement: str | None = None
+    case_material: str | None = None
+    case_diameter_mm: int | None = None
+    specs_json: str | None = None
+    ai_json: str | None = None
+    needs_review: int = 0
+    review_status: str = "pending"
+    reviewed_at: str | None = None
+    override_json: str | None = None
+    description: str | None = None
 
     def __post_init__(self) -> None:
         if not self.lot_id.strip():
@@ -100,6 +116,10 @@ class Lot:
             raise ScrapeError(f"{self.lot_id}: an unsold lot must not have a hammer price")
         if self.bids_count is not None and self.bids_count < 0:
             raise ScrapeError(f"{self.lot_id}: bids_count must be >= 0, got {self.bids_count}")
+        if self.needs_review not in (0, 1):
+            raise ScrapeError(f"{self.lot_id}: needs_review must be 0 or 1")
+        if self.review_status not in {"pending", "resolved", "ignored"}:
+            raise ScrapeError(f"{self.lot_id}: invalid review_status {self.review_status!r}")
 
     @property
     def days_to_close(self) -> int:

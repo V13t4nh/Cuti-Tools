@@ -22,6 +22,64 @@ REFERENCE_DAY = date(2026, 8, 1)
 LOTS_PER_PAGE = 48
 PAGES = 8
 
+# Four real-world-shaped lot pages used by the Details parser and settlement
+# tests.  They intentionally keep the source text as it appears on an auction
+# page: identity parsing belongs to the application, not to this fixture.
+DETAIL_LOTS: tuple[tuple[str, str, dict[str, str], str], ...] = (
+    (
+        "detail-seiko-7t12-0at0",
+        "Seiko chronograph 7T12-0AT0",
+        {
+            "Brand": "Seiko",
+            "Model": "Chronograph",
+            "Reference number": "7T12-0AT0",
+            "Movement": "Quartz",
+            "Case material": "Stainless steel",
+            "Case diameter": "39 mm",
+        },
+        "Vintage Seiko chronograph with caliber 7T12 and case code 0AT0.",
+    ),
+    (
+        "detail-omega-2849-6-sc",
+        "Omega Seamaster 2849-6 SC",
+        {
+            "Brand": "Omega",
+            "Model": "Seamaster",
+            "Reference number": "2849-6 SC",
+            "Movement": "Automatic",
+            "Case material": "Stainless steel",
+            "Case diameter": "34 mm",
+        },
+        "Vintage Omega with Cal. 503 movement and signed dial.",
+    ),
+    (
+        "detail-omega-2846-8-sc-2848",
+        "Omega Seamaster 2846 8 SC / 2848",
+        {
+            "Brand": "Omega",
+            "Model": "Seamaster",
+            "Reference number": "2846 8 SC / 2848",
+            "Movement": "Automatic",
+            "Case material": "Stainless steel",
+            "Case diameter": "34 mm",
+        },
+        "Vintage Omega listing. Movement marked Calibre 500; reference has two codes.",
+    ),
+    (
+        "detail-rolex-16234y",
+        "Rolex Datejust 16234(Y)",
+        {
+            "Brand": "Rolex",
+            "Model": "Datejust",
+            "Reference number": "16234(Y)",
+            "Movement": "Automatic",
+            "Case material": "Steel and gold",
+            "Case diameter": "36 mm",
+        },
+        "Rolex Datejust with modern reference 16234(Y); caliber is not stated.",
+    ),
+)
+
 MODELS: tuple[tuple[str, str, int, str], ...] = (
     # (brand, model text, typical hammer price in EUR, case form)
     ("Omega", "Seamaster Diver 300M 210.30.42", 3200, "round"),
@@ -198,6 +256,35 @@ def generate_deals(base_dir: Path) -> int:
     return len(feed)
 
 
+def _detail_lot_html(title: str, details: dict[str, str], description: str) -> str:
+    rows = "\n".join(
+        f"      <tr><th>{html.escape(key)}</th><td>{html.escape(value)}</td></tr>"
+        for key, value in details.items()
+    )
+    return (
+        "<!doctype html>\n<html lang=\"en\">\n<head><meta charset=\"utf-8\">"
+        f"<title>{html.escape(title)}</title></head>\n<body>\n"
+        "  <main class=\"lot-page\">\n"
+        f"    <h1>{html.escape(title)}</h1>\n"
+        "    <table class=\"details\"><tbody>\n"
+        f"{rows}\n"
+        "    </tbody></table>\n"
+        f"    <div class=\"description\">{html.escape(description)}</div>\n"
+        "  </main>\n</body>\n</html>\n"
+    )
+
+
+def generate_detail_lots(base_dir: Path) -> int:
+    """Write deterministic HTML lot pages containing Details and description."""
+    out_dir = base_dir / "data" / "sample" / "catawiki" / "details"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for lot_id, title, details, description in DETAIL_LOTS:
+        (out_dir / f"{lot_id}.html").write_text(
+            _detail_lot_html(title, details, description), encoding="utf-8"
+        )
+    return len(DETAIL_LOTS)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate deterministic sample data")
     parser.add_argument(
@@ -206,8 +293,12 @@ def main() -> int:
     args = parser.parse_args()
     rng = random.Random(SEED)
     lots = generate_lots(rng, args.home)
+    detail_lots = generate_detail_lots(args.home)
     deals = generate_deals(args.home)
-    print(f"generated {lots} lots across {PAGES} pages and {deals} deals under {args.home}/data/sample")
+    print(
+        f"generated {lots} lots across {PAGES} pages, {detail_lots} detail lots, "
+        f"and {deals} deals under {args.home}/data/sample"
+    )
     return 0
 
 

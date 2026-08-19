@@ -1,146 +1,29 @@
-"""Title normalization: brand, model key and condition cluster.
-
-All vocabulary lives in ``config/rules.json`` so the matching behaviour can be
-tuned without touching code. Unknown brands raise instead of being guessed:
-a wrong model key silently poisons every downstream price.
-"""
+"""Title normalization: brand detection, condition clustering and model keys."""
 
 from __future__ import annotations
 
-import json
-import re
-import unicodedata
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from pathlib import Path
 
-from .errors import ConfigError, NormalizationError
+from .errors import NormalizationError
 from .models import Condition
+from .normalize_rules import IdentityRules, Rules, load_rules, normalize_text, tokenize
+from .normalize_identity import IdentityParts, extract_caliber, identity_value, split_identity
 
-# Dots and hyphens survive tokenization so reference numbers such as
-# "210.30.42" or "116610-LN" stay a single, highly discriminative token.
-_TOKEN_SPLIT_RE = re.compile(r"[^a-z0-9.\-]+")
-_TRIM_CHARS = ".-"
+__all__ = [
+    "IdentityRules", "IdentityParts", "Rules", "load_rules", "normalize_text", "tokenize",
+    "extract_caliber", "identity_value", "split_identity",
+    "detect_brand", "detect_condition", "model_tokens", "reference_tokens",
+    "model_key", "similarity", "Classification", "classify",
+]
+
 _REFERENCE_CUES = frozenset({"ref", "reference"})
 _YEAR_MIN = 1900
 _YEAR_MAX = 2099
 
 
-def normalize_text(value: str) -> str:
-    """Lowercase, strip accents and punctuation, collapse whitespace."""
-    value = value.replace("Đ", "D").replace("đ", "d")
-    decomposed = unicodedata.normalize("NFKD", value)
-    ascii_text = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
-    parts = (part.strip(_TRIM_CHARS) for part in _TOKEN_SPLIT_RE.split(ascii_text.lower()))
-    return " ".join(part for part in parts if part)
-
-
-def tokenize(value: str) -> list[str]:
-    normalized = normalize_text(value)
-    return normalized.split() if normalized else []
-
-
-@dataclass(frozen=True, slots=True)
-class Rules:
-    """Normalization vocabulary loaded from disk."""
-
-    brand_aliases: dict[str, str]
-    condition_keywords: tuple[tuple[Condition, tuple[str, ...]], ...]
-    stopwords: frozenset[str]
-    identity_tokens: frozenset[str]
-    model_token_limit: int
-    reference_pattern: re.Pattern[str] | None
-
-    @property
-    def brands(self) -> frozenset[str]:
-        return frozenset(self.brand_aliases.values())
-
-
-def _require(mapping: dict, key: str, kind: type, path: Path):
-    if key not in mapping:
-        raise ConfigError(f"{path}: missing required key {key!r}")
-    value = mapping[key]
-    if not isinstance(value, kind):
-        raise ConfigError(f"{path}: {key!r} must be {kind.__name__}, got {type(value).__name__}")
-    return value
-
-
-def load_rules(path: Path) -> Rules:
-    """Load and validate the normalization rules file."""
-    if not path.is_file():
-        raise ConfigError(f"rules file not found: {path}")
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ConfigError(f"{path}: invalid JSON ({exc})") from exc
-    if not isinstance(raw, dict):
-        raise ConfigError(f"{path}: top level must be an object")
-
-    brands_raw = _require(raw, "brands", dict, path)
-    brand_aliases: dict[str, str] = {}
-    for canonical, aliases in brands_raw.items():
-        if not isinstance(aliases, list):
-            raise ConfigError(f"{path}: brands.{canonical} must be a list of aliases")
-        key = normalize_text(canonical)
-        if not key:
-            raise ConfigError(f"{path}: brand name {canonical!r} normalizes to an empty string")
-        brand_aliases[key] = key
-        for alias in [*aliases, canonical]:
-            alias_key = normalize_text(str(alias))
-            if not alias_key:
-                raise ConfigError(f"{path}: empty alias for brand {canonical!r}")
-            existing = brand_aliases.get(alias_key)
-            if existing is not None and existing != key:
-                raise ConfigError(
-                    f"{path}: alias {alias_key!r} maps to both {existing!r} and {key!r}"
-                )
-            brand_aliases[alias_key] = key
-    if not brand_aliases:
-        raise ConfigError(f"{path}: at least one brand is required")
-
-    condition_raw = _require(raw, "condition", dict, path)
-    priority = _require(condition_raw, "priority", list, path)
-    keywords_raw = _require(condition_raw, "keywords", dict, path)
-    condition_keywords: list[tuple[Condition, tuple[str, ...]]] = []
-    for name in priority:
-        condition = Condition.parse(str(name))
-        words = keywords_raw.get(str(name))
-        if not isinstance(words, list) or not words:
-            raise ConfigError(f"{path}: condition.keywords.{name} must be a non-empty list")
-        condition_keywords.append(
-            (condition, tuple(normalize_text(str(word)) for word in words))
-        )
-    stopwords = frozenset(
-        normalize_text(str(word)) for word in _require(raw, "stopwords", list, path)
-    )
-    identity_raw = _require(raw, "identity_tokens", list, path)
-    identity_tokens = frozenset(normalize_text(str(word)) for word in identity_raw)
-    if not identity_tokens or "" in identity_tokens:
-        raise ConfigError(f"{path}: identity_tokens must contain non-empty values")
-    model_token_limit = int(_require(raw, "model_token_limit", int, path))
-    if model_token_limit < 1:
-        raise ConfigError(f"{path}: model_token_limit must be >= 1")
-
-    pattern_raw = raw.get("reference_pattern")
-    if pattern_raw is not None and not isinstance(pattern_raw, str):
-        raise ConfigError(f"{path}: reference_pattern must be a string")
-    try:
-        reference_pattern = re.compile(pattern_raw) if pattern_raw else None
-    except re.error as exc:
-        raise ConfigError(f"{path}: invalid reference_pattern ({exc})") from exc
-
-    return Rules(
-        brand_aliases=brand_aliases,
-        condition_keywords=tuple(condition_keywords),
-        stopwords=stopwords,
-        identity_tokens=identity_tokens,
-        model_token_limit=model_token_limit,
-        reference_pattern=reference_pattern,
-    )
-
-
 def detect_brand(title: str, rules: Rules) -> str:
-    """Return the canonical brand. Longest alias wins ("a lange sohne")."""
+    """Return the canonical brand. Longest alias wins."""
     tokens = tokenize(title)
     if not tokens:
         raise NormalizationError(f"title {title!r} contains no usable tokens")
@@ -158,48 +41,22 @@ def detect_condition(title: str, rules: Rules) -> Condition | None:
     """Detect accessory completeness; return ``None`` when evidence is absent."""
     normalized = normalize_text(title)
     padded = f" {normalized} "
-    no_box = any(
-        phrase in padded
-        for phrase in (" no box ", " without box ", " khong hop ", " mat hop ")
-    )
-    no_papers = any(
-        phrase in padded
-        for phrase in (
-            " no papers ",
-            " without papers ",
-            " khong giay ",
-            " mat giay ",
-            " mat so ",
-            " mat the ",
-        )
-    )
+    no_box = any(phrase in padded for phrase in (" no box ", " without box ", " khong hop ", " mat hop "))
+    no_papers = any(phrase in padded for phrase in (
+        " no papers ", " without papers ", " khong giay ", " mat giay ", " mat so ", " mat the "))
     evidence_text = padded
-    for phrase in (
-        " no box ",
-        " without box ",
-        " khong hop ",
-        " mat hop ",
-        " no papers ",
-        " without papers ",
-        " khong giay ",
-        " mat giay ",
-        " mat so ",
-        " mat the ",
-    ):
+    for phrase in (" no box ", " without box ", " khong hop ", " mat hop ", " no papers ",
+                   " without papers ", " khong giay ", " mat giay ", " mat so ", " mat the "):
         evidence_text = evidence_text.replace(phrase, " ")
     matches: list[Condition] = []
     for condition, keywords in rules.condition_keywords:
         if any(f" {keyword} " in evidence_text for keyword in keywords):
             matches.append(condition)
     evidence = set(matches)
-    contradiction = (
-        (Condition.FULLSET in evidence and (no_box or no_papers))
-        or (no_box and Condition.BOX in evidence)
-        or (no_papers and Condition.PAPERS in evidence)
-    )
-    if contradiction:
-        raise NormalizationError(f"contradictory condition evidence in title {title!r}")
-    if Condition.NAKED in evidence and any(item is not Condition.NAKED for item in evidence):
+    contradiction = ((Condition.FULLSET in evidence and (no_box or no_papers))
+                     or (no_box and Condition.BOX in evidence)
+                     or (no_papers and Condition.PAPERS in evidence))
+    if contradiction or (Condition.NAKED in evidence and any(item is not Condition.NAKED for item in evidence)):
         raise NormalizationError(f"contradictory condition evidence in title {title!r}")
     if Condition.FULLSET in evidence or {Condition.BOX, Condition.PAPERS} <= evidence:
         return Condition.FULLSET
@@ -223,16 +80,9 @@ def _is_uncued_year(tokens: list[str], index: int) -> bool:
 def _reference_tokens_from(tokens: list[str], rules: Rules) -> tuple[str, ...]:
     if rules.reference_pattern is None:
         return ()
-    return tuple(
-        sorted(
-            {
-                token
-                for index, token in enumerate(tokens)
-                if not _is_uncued_year(tokens, index)
-                and rules.reference_pattern.fullmatch(token)
-            }
-        )
-    )
+    return tuple(sorted({token for index, token in enumerate(tokens)
+                         if not _is_uncued_year(tokens, index)
+                         and rules.reference_pattern.fullmatch(token)}))
 
 
 def model_tokens(title: str, rules: Rules, *, brand: str | None = None) -> tuple[str, ...]:
@@ -242,20 +92,12 @@ def model_tokens(title: str, rules: Rules, *, brand: str | None = None) -> tuple
     references = _reference_tokens_from(raw_tokens, rules)
     if references:
         return references
-
     brand_tokens = set(brand.split())
-    condition_words = {
-        word for _, keywords in rules.condition_keywords for word in " ".join(keywords).split()
-    }
-    tokens = [
-        token
-        for index, token in enumerate(raw_tokens)
-        if token not in brand_tokens
-        and token not in rules.stopwords
-        and token not in rules.identity_tokens
-        and token not in condition_words
-        and not _is_uncued_year(raw_tokens, index)
-    ]
+    condition_words = {word for _, keywords in rules.condition_keywords for word in " ".join(keywords).split()}
+    tokens = [token for index, token in enumerate(raw_tokens)
+              if token not in brand_tokens and token not in rules.stopwords
+              and token not in rules.identity_tokens and token not in condition_words
+              and not _is_uncued_year(raw_tokens, index)]
     if not tokens:
         raise NormalizationError(f"title {title!r} has no model tokens after filtering")
     identity = sorted(set(raw_tokens) & rules.identity_tokens)
@@ -274,13 +116,7 @@ def model_key(title: str, rules: Rules, *, brand: str | None = None) -> str:
 
 
 def similarity(left: str, right: str) -> float:
-    """Return order-insensitive token-set similarity on a 0..100 scale.
-
-    ``rapidfuzz.token_set_ratio`` was used here originally.  The small
-    token-set arrangement below preserves its useful subset behaviour (a
-    title with extra condition words still matches its model) while using
-    only :class:`difflib.SequenceMatcher` from the standard library.
-    """
+    """Return order-insensitive token-set similarity on a 0..100 scale."""
     left_tokens = set(tokenize(left))
     right_tokens = set(tokenize(right))
     if not left_tokens or not right_tokens:
@@ -288,11 +124,9 @@ def similarity(left: str, right: str) -> float:
     common = " ".join(sorted(left_tokens & right_tokens))
     left_full = " ".join(sorted(left_tokens))
     right_full = " ".join(sorted(right_tokens))
-    return 100.0 * max(
-        SequenceMatcher(None, common, left_full).ratio(),
-        SequenceMatcher(None, common, right_full).ratio(),
-        SequenceMatcher(None, left_full, right_full).ratio(),
-    )
+    return 100.0 * max(SequenceMatcher(None, common, left_full).ratio(),
+                        SequenceMatcher(None, common, right_full).ratio(),
+                        SequenceMatcher(None, left_full, right_full).ratio())
 
 
 @dataclass(frozen=True, slots=True)
@@ -308,13 +142,5 @@ def classify(title: str, rules: Rules) -> Classification:
     brand = detect_brand(title, rules)
     references = reference_tokens(title, rules)
     if len(references) > 1:
-        raise NormalizationError(
-            f"multiple reference numbers are ambiguous in title {title!r}: "
-            + ", ".join(references)
-        )
-    return Classification(
-        brand=brand,
-        model_key=model_key(title, rules, brand=brand),
-        references=references,
-        condition=detect_condition(title, rules),
-    )
+        raise NormalizationError(f"multiple reference numbers are ambiguous in title {title!r}: " + ", ".join(references))
+    return Classification(brand, model_key(title, rules, brand=brand), references, detect_condition(title, rules))

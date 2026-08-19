@@ -16,7 +16,7 @@ from cuti.models import Condition, WatchForm
 from cuti.normalize import classify, detect_condition, model_key, reference_tokens
 from cuti.notifier import build_notifier
 from cuti.pipeline import ingest_lots, quote_watch, watch_deals
-from cuti.storage import connect, count_rows, fetch_quote_audit, outbox_counts, upsert_lots
+from cuti.storage import SCHEMA_VERSION, connect, count_rows, fetch_quote_audit, outbox_counts, upsert_lots
 
 from support import NOW, TODAY, ProjectTestCase, make_lot
 
@@ -500,7 +500,9 @@ class MigrationTests(unittest.TestCase):
                     row["assumptions"],
                     '{"audit_version": 1, "legacy_snapshot": "unavailable"}',
                 )
-                self.assertEqual(migrated.execute("PRAGMA user_version").fetchone()[0], 3)
+                self.assertEqual(
+                    migrated.execute("PRAGMA user_version").fetchone()[0], SCHEMA_VERSION
+                )
             finally:
                 migrated.close()
 

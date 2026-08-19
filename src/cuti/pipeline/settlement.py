@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, fields
 from datetime import datetime
 
 from ..config import Settings
 from ..errors import NormalizationError
 from ..models import Lot, WatchForm
 from ..normalize import Rules, classify
+from .settlement_resolver import resolve_typed_fields
 from ..scrapers import catawiki_api
 from ..storage import LiveWatchRow, delete_live_watch, upsert_live_watch, upsert_lots
 
@@ -31,26 +33,67 @@ def _settled_lot(
     state: catawiki_api.LiveState,
     outcome: catawiki_api.BiddingOutcome,
     rules: Rules,
+    details: object = None,
+    description: str | None = None,
+    override_json: object = None,
+    ai_json: object = None,
 ) -> Lot:
     classification = classify(row.title, rules)
     if classification.condition is None:
         raise NormalizationError(f"{row.lot_id}: title states no condition")
+    row_details = details if details is not None else getattr(row, "details", None)
+    row_description = description or getattr(row, "description", None)
+    if row_description is None and row_details is not None:
+        row_description = getattr(row_details, "description", None)
+    if row_description is None and isinstance(row_details, dict):
+        row_description = row_details.get("description")
+    resolved = resolve_typed_fields(
+        row.title,
+        rules,
+        details=row_details,
+        description=row_description,
+        override_json=override_json,
+        ai_json=ai_json,
+    )
+    values: dict[str, object] = {
+        "lot_id": row.lot_id,
+        "source": row.source,
+        "title": row.title,
+        "brand": resolved.brand or classification.brand,
+        "model_key": resolved.model_key,
+        "condition_tag": classification.condition,
+        "form": WatchForm.UNKNOWN,
+        "hearts": state.favorite_count,
+        "sold": outcome.is_sold,
+        "hammer_eur": outcome.hammer_eur,
+        "opened_at": state.opened_at,
+        "ended_at": state.ended_at,
+        "url": row.url,
+        "subtitle": row.subtitle,
+        "bids_count": outcome.bids_count,
+    }
+    lot_names = {item.name for item in fields(Lot)}
+    extras: dict[str, object] = {
+        "model": resolved.model,
+        "ref_number": resolved.ref_number,
+        "caliber": resolved.caliber,
+        "case_code": resolved.case_code,
+        "movement": resolved.movement,
+        "case_material": resolved.case_material,
+        "case_diameter_mm": resolved.case_diameter_mm,
+        "specs_json": json.dumps(resolved.specs or {}, sort_keys=True),
+        "ai_json": None,
+        "needs_review": resolved.needs_review,
+        "review_status": "pending",
+        "reviewed_at": None,
+        "override_json": (
+            json.dumps(override_json, sort_keys=True) if isinstance(override_json, (dict, list)) else override_json
+        ),
+        "description": row_description,
+    }
+    values.update({name: value for name, value in extras.items() if name in lot_names})
     return Lot(
-        lot_id=row.lot_id,
-        source=row.source,
-        title=row.title,
-        brand=classification.brand,
-        model_key=classification.model_key,
-        condition_tag=classification.condition,
-        form=WatchForm.UNKNOWN,
-        hearts=state.favorite_count,
-        sold=outcome.is_sold,
-        hammer_eur=outcome.hammer_eur,
-        opened_at=state.opened_at,
-        ended_at=state.ended_at,
-        url=row.url,
-        subtitle=row.subtitle,
-        bids_count=outcome.bids_count,
+        **values,
     )
 
 

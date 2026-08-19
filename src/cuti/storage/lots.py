@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass
+import json
+import zlib
+from dataclasses import dataclass, fields
 from datetime import date, datetime
 from typing import Iterable
 
@@ -13,24 +15,36 @@ from .schema import NO, YES, utcnow
 
 
 def _row_to_lot(row: sqlite3.Row) -> Lot:
-    return Lot(
-        lot_id=row["lot_id"],
-        source=row["source"],
-        title=row["title"],
-        brand=row["brand"],
-        model_key=row["model_key"],
-        condition_tag=Condition(row["condition_tag"]),
-        form=WatchForm(row["form"]),
-        hearts=row["hearts"],
-        sold=bool(row["sold"]),
-        hammer_eur=row["hammer_eur"],
-        opened_at=date.fromisoformat(row["opened_at"]),
-        ended_at=date.fromisoformat(row["ended_at"]),
-        url=row["url"],
-        subtitle=row["subtitle"],
-        bids_count=row["bids_count"],
-        source_available=row["source_available"] == YES,
-    )
+    values: dict[str, object] = {
+        "lot_id": row["lot_id"],
+        "source": row["source"],
+        "title": row["title"],
+        "brand": row["brand"],
+        "model_key": row["model_key"],
+        "condition_tag": Condition(row["condition_tag"]),
+        "form": WatchForm(row["form"]),
+        "hearts": row["hearts"],
+        "sold": bool(row["sold"]),
+        "hammer_eur": row["hammer_eur"],
+        "opened_at": date.fromisoformat(row["opened_at"]),
+        "ended_at": date.fromisoformat(row["ended_at"]),
+        "url": row["url"],
+        "subtitle": row["subtitle"],
+        "bids_count": row["bids_count"],
+        "source_available": row["source_available"] == YES,
+    }
+    extras = {
+        name: row[name]
+        for name in (
+            "model", "ref_number", "caliber", "case_code", "movement",
+            "case_material", "case_diameter_mm", "specs_json", "ai_json",
+            "needs_review", "review_status", "reviewed_at", "override_json",
+        )
+        if name in row.keys()
+    }
+    values.update({name: value for name, value in extras.items()
+                   if name in {item.name for item in fields(Lot)}})
+    return Lot(**values)
 
 
 def _with_row_factory(conn: sqlite3.Connection) -> sqlite3.Connection:
@@ -43,13 +57,31 @@ def upsert_lots(conn: sqlite3.Connection, lots: Iterable[Lot], now: datetime) ->
     timestamp = utcnow(now)
     with conn:
         for lot in lots:
+            extras = {
+                name: getattr(lot, name, None)
+                for name in (
+                    "model", "ref_number", "caliber", "case_code", "movement",
+                    "case_material", "case_diameter_mm", "specs_json", "ai_json",
+                    "needs_review", "review_status", "reviewed_at", "override_json",
+                )
+            }
+            for name in ("specs_json", "ai_json", "override_json"):
+                if isinstance(extras[name], (dict, list)):
+                    extras[name] = json.dumps(extras[name], sort_keys=True)
+            if extras["needs_review"] is None:
+                extras["needs_review"] = 0
+            if extras["review_status"] is None:
+                extras["review_status"] = "pending"
             conn.execute(
                 """
                 INSERT INTO lots (
                     lot_id, source, title, brand, model_key, condition_tag, form,
                     hearts, sold, hammer_eur, opened_at, ended_at, url, subtitle,
-                    bids_count, source_available, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    bids_count, source_available, model, ref_number, caliber, case_code,
+                    movement, case_material, case_diameter_mm, specs_json, ai_json,
+                    needs_review, review_status, reviewed_at, override_json, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(lot_id) DO UPDATE SET
                     source=excluded.source, title=excluded.title, brand=excluded.brand,
                     model_key=excluded.model_key, condition_tag=excluded.condition_tag,
@@ -57,6 +89,13 @@ def upsert_lots(conn: sqlite3.Connection, lots: Iterable[Lot], now: datetime) ->
                     hammer_eur=excluded.hammer_eur, opened_at=excluded.opened_at,
                     ended_at=excluded.ended_at, url=excluded.url,
                     subtitle=excluded.subtitle, bids_count=excluded.bids_count,
+                    model=excluded.model, ref_number=excluded.ref_number,
+                    caliber=excluded.caliber, case_code=excluded.case_code,
+                    movement=excluded.movement, case_material=excluded.case_material,
+                    case_diameter_mm=excluded.case_diameter_mm, specs_json=excluded.specs_json,
+                    ai_json=excluded.ai_json, needs_review=excluded.needs_review,
+                    review_status=excluded.review_status, reviewed_at=excluded.reviewed_at,
+                    override_json=excluded.override_json,
                     updated_at=excluded.updated_at
                 """,
                 # source availability belongs to the URL checker and is not
@@ -66,9 +105,21 @@ def upsert_lots(conn: sqlite3.Connection, lots: Iterable[Lot], now: datetime) ->
                     lot.condition_tag.value, lot.form.value, lot.hearts, int(lot.sold),
                     lot.hammer_eur, lot.opened_at.isoformat(), lot.ended_at.isoformat(),
                     lot.url, lot.subtitle, lot.bids_count,
-                    YES if lot.source_available else NO, timestamp,
+                    YES if lot.source_available else NO,
+                    extras["model"], extras["ref_number"], extras["caliber"],
+                    extras["case_code"], extras["movement"], extras["case_material"],
+                    extras["case_diameter_mm"], extras["specs_json"], extras["ai_json"],
+                    extras["needs_review"], extras["review_status"], extras["reviewed_at"],
+                    extras["override_json"], timestamp,
                 ),
             )
+            description = getattr(lot, "description", None)
+            if description is not None:
+                conn.execute(
+                    "INSERT INTO lot_desc(lot_id, desc_z) VALUES (?, ?) "
+                    "ON CONFLICT(lot_id) DO UPDATE SET desc_z = excluded.desc_z",
+                    (lot.lot_id, zlib.compress(description.encode("utf-8"))),
+                )
             written += 1
     return written
 
@@ -83,7 +134,9 @@ def fetch_lots_for_model(
     _with_row_factory(conn)
     rows = conn.execute(
         """SELECT * FROM lots WHERE model_key = ? AND condition_tag = ?
-           AND ended_at >= ? AND ended_at <= ? ORDER BY ended_at""",
+           AND ended_at >= ? AND ended_at <= ?
+           AND NOT (needs_review = 1 AND review_status = 'pending')
+           ORDER BY ended_at""",
         (model_key, condition.value, since.isoformat(), today.isoformat()),
     ).fetchall()
     return [_row_to_lot(row) for row in rows]
@@ -91,7 +144,10 @@ def fetch_lots_for_model(
 def fetch_lots_for_liquidity(conn: sqlite3.Connection, since: date) -> list[Lot]:
     _with_row_factory(conn)
     rows = conn.execute(
-        "SELECT * FROM lots WHERE ended_at >= ? ORDER BY ended_at", (since.isoformat(),)
+        """SELECT * FROM lots
+           WHERE ended_at >= ?
+           ORDER BY ended_at""",
+        (since.isoformat(),),
     ).fetchall()
     return [_row_to_lot(row) for row in rows]
 
@@ -102,6 +158,7 @@ def fetch_sold_lots_since(
     _with_row_factory(conn)
     rows = conn.execute(
         """SELECT * FROM lots WHERE condition_tag = ? AND sold = 1 AND ended_at >= ?
+           AND NOT (needs_review = 1 AND review_status = 'pending')
            ORDER BY ended_at""",
         (condition.value, since.isoformat()),
     ).fetchall()
@@ -136,6 +193,7 @@ def search_sold_lots(
         SELECT l.* FROM lots l
         JOIN lots_fts f ON f.rowid = l.rowid
         WHERE lots_fts MATCH ? AND l.brand = ? AND l.condition_tag = ? AND l.ended_at >= ?
+        AND NOT (l.needs_review = 1 AND l.review_status = 'pending')
         {sold_clause}
         {model_clause}
         ORDER BY l.ended_at DESC

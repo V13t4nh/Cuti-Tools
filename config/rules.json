@@ -40,5 +40,21 @@
     "self-winding", "solar", "kinetic", "spring-drive"
   ],
   "model_token_limit": 2,
-  "reference_pattern": "(?:[a-z]{1,4}[0-9]+(?:[.\\-][a-z0-9]+)+|[a-z]{1,4}[0-9]{3,}[a-z0-9.\\-]*|[0-9]{4,}[a-z0-9.\\-]*|[0-9]{2,}(?:\\.[0-9]{2,})+)"
+  "reference_pattern": "(?:[a-z]{1,4}[0-9]+(?:[.\\-][a-z0-9]+)+|[a-z]{1,4}[0-9]{3,}[a-z0-9.\\-]*|[0-9]{4,}[a-z0-9.\\-]*|[0-9]{2,}(?:\\.[0-9]{2,})+)",
+  "identity": {
+    "split_patterns": {
+      "seiko": "(?P<caliber>[A-Z0-9]+)-(?P<case_code>[A-Z0-9]+)",
+      "citizen": "(?P<caliber>[A-Z0-9]+)-(?P<case_code>[A-Z0-9]+)"
+    },
+    "vintage_brands": ["omega", "longines", "tudor"],
+    "modern_brands": ["rolex"],
+    "modern_ref_patterns": [
+      "16234(?:\\([A-Z]\\))?",
+      "L2\\.785\\.4\\.76\\.6",
+      "NJ0153-82X"
+    ],
+    "caliber_patterns": [
+      "\\bCal(?:iber|ibre)?\\.?\\s*[:#-]?\\s*(?P<caliber>[A-Z0-9]+(?:[-/][A-Z0-9]+)?)"
+    ]
+  }
 }
