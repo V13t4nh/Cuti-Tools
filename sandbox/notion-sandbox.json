@@ -10,7 +10,7 @@
     "glibc": "AL2023-compatible"
   },
   "verification": {
-    "command": "PYTHONPATH=src python -m unittest discover -s tests -v",
+    "command": "make verify",
     "testReady": true,
     "sourceOnlyTestReady": true,
     "dependencyBundleRequired": false,
