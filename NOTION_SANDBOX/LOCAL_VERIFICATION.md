@@ -1,8 +1,8 @@
 # Local verification
 
 - Repository: `cuti-tools`
-- Source baseline: `2e22736bd85c6384e73ff0474b6cff4edf359b76`.
-- Result: **242 passed, 0 failed, 0 skipped, exit code 0**.
+- Source baseline: `6318564f27ae89e4d3bc5aa35a338c4c9a1bc781`.
+- Result: **250 passed, 0 failed, 0 skipped, exit code 0**.
 - Required acceptance command: `make verify`
 - Network: not required; verification is intended to run offline
 - Dependencies: Python 3.11+ standard library for the core path; no package
