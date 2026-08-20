@@ -1,62 +1,47 @@
-# Bàn giao vòng 10 — Tầng 1 xanh; Tầng 2 chờ HTML người tải
+# Bàn giao vòng 11 — Scale 1 Buyer và chặn xác nhận fixture rỗng
 
 ## 1. Commit hash + ngày đóng gói
 
-- Source commit: `5e482667b18f6291128b287f4f01ecae14bffa9a`.
+- Source commit: `05a905fe78566f44de594d613cf71823553cd217`.
 - Ngày đóng gói: 2026-08-20 (Asia/Bangkok).
-- `NOTION_SANDBOX/PROVENANCE.json` dùng cùng source commit và kết quả 286 test.
+- `NOTION_SANDBOX/PROVENANCE.json` dùng cùng source commit.
 
-## 2. Output verify thật, nguyên văn
+## 2. Tầng 1 — verify offline
 
-### Tầng 1 — verify offline
+- Raw log: `var/verify/2026-08-20/verify.log`; dòng 1 là lệnh, dòng 51 là `LIVE_FIXTURES=0`, dòng 357 là `Ran 291 tests`, dòng 359 là `OK`, dòng 564 là `SRC_LOC_MAX=230`, dòng 566 là `EXIT=0`.
+- Không có skip hoặc request mạng trong tầng 1.
 
-- Raw log: `var/verify/2026-08-20/verify.log`; dòng 1 là lệnh thực tế, dòng 351 là `Ran 286 tests`, dòng 558 là `SRC_LOC_MAX=230`, dòng 560 là `EXIT=0`.
-- Log chứa stdout/stderr của toàn bộ test và workflow mẫu nguyên trạng; không có dòng ghép tay trong mục này.
+## 3. Tầng 2 — verify-live
 
-### Tầng 2 — verify-live
+- Không chạy trong vòng này theo prompt. Chưa có HTML người tải; trạng thái 403 trước đó còn nguyên tại `var/live/2026-08-20/fetch-lots.log`, dòng 51 (HTTP 403/392 byte), dòng 98 (`EXIT=1`).
+- Fixture lưu mới: không có; `LIVE_FIXTURES=0` được ghi tại tầng 1, dòng 51.
 
-- Lần live trước: `var/live/2026-08-20/verify-live.log`; dòng 1 là lệnh, dòng 87 là `EXIT=1`.
-- Request `106019970`: `var/live/2026-08-20/fetch-lots.log`; dòng 51 ghi HTTP 403 và 392 byte, raw response ở dòng 52–63, dòng 98 là `EXIT=1`.
-- `105924279`, `105418344`, `105809071`: không có request trong raw log vì fetch dừng tại 403 đầu tiên. Vòng này không thử lại bằng user-agent hoặc proxy khác.
-- Không có HTML thật trong `tests/fixtures/live/` tại thời điểm đóng gói. Vì không có fixture/browser input mới và listing source cũ đã 403, không chạy live lại; do đó chưa có raw log pipeline Round 10 mới.
-
-## 3. File thêm / sửa / xoá, kèm LOC sau khi sửa
+## 4. File thêm / sửa / xoá, kèm LOC sau khi sửa
 
 Sửa:
 
-- `README.md` — 214 LOC (gỡ tham chiếu `mermaid.md`).
-- `scripts/verify.py` — 147 LOC.
-- `scripts/verify_live.py` — 393 LOC.
-- `src/cuti/cli_commands.py` — 127 LOC.
-- `src/cuti/cli_parser.py` — 77 LOC.
-- `src/cuti/pipeline/ingest.py` — 116 LOC.
-- `tests/test_pipeline_cli.py` — 355 LOC.
+- `AGENTS.md` — 145 LOC (policy người dùng cập nhật).
+- `scripts/verify.py` — 155 LOC.
+- `src/cuti/evaluation_chart.py` — 173 LOC.
+- `tests/test_app.py` — 130 LOC.
+- `tests/test_charts_scale1.py` — 57 LOC.
+- `tests/test_verify_scripts.py` — 76 LOC.
+- `var/verify/2026-08-20/verify.log` — 566 LOC, raw log tự sinh.
 - `NOTION_SANDBOX/PROVENANCE.json` — 11 LOC.
 - `notion.md` — cập nhật lúc đóng gói.
 
-Thêm:
+Thêm/xoá: không có.
 
-- `tests/test_live_lot_fixtures.py` — 42 LOC.
-- `tests/test_verify_scripts.py` — 42 LOC.
-- `var/verify/2026-08-20/verify.log` — 560 LOC, raw log tự sinh.
+Diff schema: không đổi bảng, cột, index hoặc kiểu dữ liệu; `src/cuti/storage/schema_ddl.py` không bị sửa.
 
-Xoá:
+## 5. Từng task được giao
 
-- `mermaid.md` — 298 LOC.
+- T1: `scripts/verify.py` đếm đúng chỉ file `.html` thật trong `tests/fixtures/live/`, ghi/in `LIVE_FIXTURES=<n>` trước test. Test kiểm thư mục không có/không tồn tại ra 0, bỏ qua file không phải HTML và thư mục có đuôi `.html`, đồng thời kiểm raw log + stdout có `LIVE_FIXTURES=0`. Không tạo fixture giả, không skip.
+- T2: accessor chart trả cả `cycle_position` và `heart_acceleration_rate`; pool dưới `CUTI_MIN_COMPARABLES` trả `(None, None)` trước khi tính. UI đọc trực tiếp hai field này, chỉ render khi khác `None`. Không thêm field vào `DealEvaluation`, dependency, env hoặc số học UI.
+- T3: test parity offline dùng cùng `BuyerEvaluation.chart` để assert app hiển thị nguyên giá trị `cycle_position`/`heart_acceleration_rate`, và ẩn cả hai khi `None`. Test helpers sẵn có giữ ca chu kỳ tăng/gia tốc dương và chu kỳ giảm/gia tốc âm; test accessor bổ sung ca pool mỏng cả hai `None`.
+- T4: raw tầng 1 chứa `COMMAND=`, môi trường, `LIVE_FIXTURES=0`, `SRC_LOC_MAX=230`, `EXIT=0`; line-pointer nằm ở mục 2. `AGENTS.md` được đưa vào source commit theo chỉ dẫn.
 
-Diff schema: không đổi bảng, cột hoặc index; `src/cuti/storage/schema_ddl.py` không bị sửa.
+## 6. Phản biện spec, câu hỏi, thứ cần xin duyệt
 
-## 4. Từng task được giao
-
-- T1: thêm test offline chỉ đọc các file HTML thật đang có. Test không tạo fixture giả, không skip; thư mục hiện trống nên test không có case fixture để chạy. Khi người dùng đặt bốn file đã nêu, cùng test sẽ kiểm brand, ref/case code, caliber (trừ Rolex được chỉ định `None`), movement và description; các expectation `7T12`/`0AT0`, `503`, `500`, `None`/`16234(Y)` đã có. Không kiểm sold/hammer từ HTML; chưa có payload bidding thật nên chưa có fixture JSON `parse_bidding_block`.
-- T2: thêm `cuti ingest --max-lots N`, mặc định `None` để giữ crawl 384 lot. Cap nằm trong `ingest_lots` trước `upsert_lots`; test xác nhận `10` ghi đúng 10, không flag vẫn 384, `0` và âm trả `ConfigError` qua CLI exit 1.
-- T3: `verify-live` chạy pipeline tiếp sau fetch thất bại: `init-db`, `ingest --max-lots 50`, `settle` với `CUTI_DETAILS_ENABLED=true`, rồi `evaluate`, `liquidity`, `report`, `status` dạng JSON. Thiếu source env vẫn exit 0 và không network. Kết quả live mới chưa có vì chưa có nguồn listing hợp lệ sau 403 cũ.
-- T4: `scripts/verify.py` tự sinh raw log ngày chạy với command, phiên bản Python, package, tên biến `CUTI_*`, toàn bộ output và `EXIT` cuối log; tự in giá trị LOC thật `SRC_LOC_MAX=230`. Tầng 1 đã chạy offline xanh 286 test. Tầng 2 giữ raw logs vòng trước và không được chỉnh/tóm tắt lại.
-- T5: đã xoá `mermaid.md` và gỡ tham chiếu khỏi README. Không có tham chiếu Mermaid trong nội dung `AGENTS.md` hiện hữu để gỡ; file `AGENTS.md` có thay đổi độc lập của người dùng nên không đưa vào commit này.
-
-## 5. Phản biện spec, câu hỏi, thứ cần xin duyệt
-
-- Tầng 2 chưa đóng: cần người dùng đặt HTML đã tải bằng trình duyệt tại `tests/fixtures/live/106019970.html`, `105924279.html`, `105418344.html`, `105809071.html`. Không có fixture giả trong zip.
-- Sold/hammer không thuộc contract `parse_lot_page`; chỉ bổ sung test giá búa/trạng thái khi có payload bidding thật riêng cho `parse_bidding_block`.
-- Catawiki 403 cũ được giữ nguyên trong raw log. Không thử lại bằng user-agent hoặc proxy khác. Để có pipeline T3 thật cần `CUTI_LOTS_SOURCE_URL` cho phép fetch; không tinh chỉnh code để làm số liệu trông đẹp.
-- Không thêm dependency/env, không sửa `pricing.py`, DDL hay `config/rules.json`. Mọi file `src/cuti` hiện tối đa 230 dòng. Máy đóng gói không có GNU Make; lệnh đã chạy là thân lệnh Python project-local của `make verify`.
+- Không có thay đổi spec cần xin duyệt. Tầng 2 và bốn HTML browser vẫn là nợ đã được prompt loại khỏi Vòng 11; không gọi lại mạng.
+- Không thêm dependency/env, không sửa `pricing.py`, DDL hoặc `config/rules.json`. `pricing.quote` vẫn được test gọi một lần cho mỗi pool; JSON CLI và số tiền không đổi qua suite offline.

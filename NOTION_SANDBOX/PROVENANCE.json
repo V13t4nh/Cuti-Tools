@@ -1,11 +1,11 @@
 {
-  "commit": "5e482667b18f6291128b287f4f01ecae14bffa9a",
+  "commit": "05a905fe78566f44de594d613cf71823553cd217",
   "testReady": true,
   "baselineStatus": "green",
   "blockingReason": "tier 2 incomplete: no browser HTML fixtures; prior live fetch HTTP 403 for lot 106019970 (var/live/2026-08-20/fetch-lots.log)",
   "testCommand": "make verify",
-  "testsRun": 286,
-  "testsPassed": 286,
+  "testsRun": 291,
+  "testsPassed": 291,
   "testsFailed": 0,
   "exitCode": 0
 }
