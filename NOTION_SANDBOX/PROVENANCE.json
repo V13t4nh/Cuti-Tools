@@ -1,11 +1,11 @@
 {
-  "commit": "83f2137c0f508d00426810aa16ef1d4eece4a662",
+  "commit": "bfcf1d0665f6e85636ec6e3a186bb9d92823013d",
   "testReady": true,
   "baselineStatus": "green",
-  "blockingReason": null,
+  "blockingReason": "verify-live: HTTP 403 for lot 106019970; see var/live/2026-08-20/fetch-lots.log",
   "testCommand": "make verify",
-  "testsRun": 279,
-  "testsPassed": 279,
+  "testsRun": 281,
+  "testsPassed": 281,
   "testsFailed": 0,
   "exitCode": 0
 }
