@@ -1,53 +1,51 @@
-# Bàn giao vòng 13 — giá sàn Buyer, cap deal đỏ và frozen-file evidence
+# Bàn giao vòng 14 — Scale 3: thanh khoản có trục thời gian
 
 ## 1. Commit hash + ngày đóng gói
 
-- Source commit: `b41da24ec4877bfeeed107f34f7ca659d8029c3c`.
+- Source commit: `061e0bd50a5a666173d58cb480d901668bd044a8`.
 - Ngày đóng gói: 2026-08-20 (Asia/Bangkok).
 - `NOTION_SANDBOX/PROVENANCE.json` dùng cùng source commit.
 
 ## 2. Tầng 1 — verify offline
 
-- Raw log: `var/verify/2026-08-20/verify.log`. Các mốc grep-able có mặt: `COMMAND=`, `PYTHON_VERSION=`, `PACKAGES_BEGIN`, `PACKAGES_END`, `CUTI_ENV_NAMES=`, `LIVE_FIXTURES=`, `Ran 301 tests`, `SRC_LOC_MAX=`, `ALERTS_SENT=`, ba dòng `FROZEN_SHA256`, `EXIT=0`.
-- Tầng 1 chạy offline: 301 test, 0 fail, 0 skip, exit 0. `LIVE_FIXTURES=0`, `ALERTS_SENT=1`.
+- Lệnh đã chạy: `make verify` với Python project đã khai báo.
+- Raw log: `var/verify/2026-08-20/verify.log` — các mốc `COMMAND=`, `PYTHON_VERSION=`, `PACKAGES_BEGIN`/`PACKAGES_END`, `CUTI_ENV_NAMES=`, `LIVE_FIXTURES=`, `Ran 309 tests`, `SRC_LOC_MAX=230`, ba `FROZEN_SHA256`, `ALERTS_SENT=`, `EXIT=0`.
+- Kết quả: pass; 309 test, 0 fail, 0 skip, exit 0. Ba `FROZEN_SHA256` xuất hiện trước `EXIT=0`.
 
 ## 3. Tầng 2 — verify-live
 
 - Không chạy theo prompt. Không tạo fixture trong `tests/fixtures/live/`, không gọi mạng.
-- Trạng thái fixture/live cũ không đổi: `var/live/2026-08-20/fetch-lots.log` vẫn chứa HTTP 403 trước đó.
+- Chờ đủ 4 HTML thật lưu từ trình duyệt và `CUTI_LOTS_SOURCE_URL` fetch được.
 
 ## 4. File thêm / sửa / xoá, kèm LOC sau khi sửa
 
 Sửa:
 
-- `scripts/verify.py` — 200 LOC.
-- `src/cuti/app.py` — 123 LOC.
+- `src/cuti/app.py` — 140 LOC.
 - `src/cuti/cli_commands.py` — 128 LOC.
-- `src/cuti/evaluation.py` — 194 LOC.
-- `src/cuti/pipeline/quote.py` — 160 LOC.
-- `src/cuti/price_limit.py` — 39 LOC.
-- `tests/test_app.py` — 189 LOC.
-- `tests/test_evaluation.py` — 227 LOC.
-- `tests/test_scale2_watch.py` — 119 LOC.
-- `tests/test_verify_scripts.py` — 158 LOC.
-- `var/verify/2026-08-20/verify.log` — 580 LOC, raw log tự sinh.
-- `NOTION_SANDBOX/PROVENANCE.json` — 11 LOC.
+- `src/cuti/evaluation_chart.py` — 190 LOC.
+- `src/cuti/liquidity.py` — 195 LOC.
+- `var/verify/2026-08-20/verify.log` — raw log tự sinh.
+- `NOTION_SANDBOX/PROVENANCE.json` — cập nhật lúc đóng gói.
 - `notion.md` — cập nhật lúc đóng gói.
 
-Thêm/xoá: không có.
+Thêm:
 
-Contract đã duyệt: JSON `cuti evaluate` đổi từ 15 sang 16 khóa, thêm duy nhất `max_buy_cost_vnd`.
+- `src/cuti/liquidity_timeline.py` — 102 LOC.
+- `tests/test_app_liquidity.py` — 87 LOC.
+- `tests/test_liquidity_scale3.py` — 105 LOC.
 
-Diff schema: không đổi bảng, cột, index hoặc kiểu dữ liệu; `src/cuti/storage/schema_ddl.py` không bị sửa.
+Xoá: không có.
+
+Diff schema: không đổi bảng, cột, index hoặc kiểu dữ liệu; `src/cuti/storage/schema_ddl.py` không bị sửa. `pyproject.toml` giữ `dependencies = []`.
 
 ## 5. Từng task được giao
 
-- T1: `max_buy_cost_vnd(hammers, days_to_close, settings)` nhận full pool và hỏi green bằng `pricing.quote(...).verdict`; không còn gọi `decide` ngoài `pricing.py`. Test lock cap 6×5000 EUR là `98814130`, cap green, cap + 1 không green, pool mỏng `None`.
-- T2: cap được tính cho mọi pool đủ mẫu, không phụ thuộc verdict của chi phí hiện tại. `DealEvaluation` và CLI JSON phơi `max_buy_cost_vnd`; cost đỏ vẫn có cap. Alert chỉ tạo khi verdict green và ask không vượt cap; test deal đỏ xác nhận outbox rỗng.
-- T3: app chỉ render metric `Giá nhập tối đa (VNĐ)` bằng đúng field evaluator trả về, ẩn nhãn khi null. Recorder test kiểm parity, không có số học/làm tròn/đổi tiền trong UI.
-- T4: `scripts/verify.py` có một hằng số danh sách ba file cấm sửa và log SHA-256 byte-level đúng thứ tự trước `EXIT=`. Test kiểm hash bytes tạm, lỗi thiếu file có kiểu `FrozenFileError`, và ba marker deterministic.
+- T1: thêm chuỗi quý hoàn tất theo `CUTI_COMPARABLE_WINDOW_DAYS`; mỗi cửa sổ phơi sell-through, heart-to-hammer, median days và sample size. Cửa sổ thiếu mẫu là `None`; cutoff ngày cấu hình được áp dụng cả cho quý đầu không trọn.
+- T2: thêm `declining` / `stable` / `improving` theo `CUTI_LIQUIDITY_DECLINE_RATE` cho `cuti liquidity`; thiếu hai cửa sổ liền nhau trả `None`. Test khóa omega 0.935, oris 0.875, rolex 0.858, citizen 0.847, seiko 0.834.
+- T3: Buyer nhận chuỗi qua chart accessor, chỉ chuyển giá trị thô vào `st.metric`/`st.bar_chart`; ẩn phần khi accessor `None` và ẩn metric riêng thiếu dữ liệu. Không thêm khóa JSON `cuti evaluate`.
+- T4: `evaluation.py` giữ 194 LOC; `liquidity.py` 195 LOC, nên không cần tách thêm. Tất cả `src/cuti/*.py` không quá 230 LOC, theo mốc `SRC_LOC_MAX=230`.
 
 ## 6. Phản biện spec, câu hỏi, thứ cần xin duyệt
 
-- Prompt nói SHA-256 của ba file phải khớp các MD5 đã chốt nhưng không cung cấp ba MD5 để đối chiếu chéo. Raw log đã ghi SHA-256 thực của `pricing.py`, `storage/schema_ddl.py`, `rules.json`; cần cung cấp MD5 nếu vẫn muốn thực hiện đối chiếu này.
-- Không thêm dependency/env/schema, không sửa `pricing.py`, DDL hoặc `config/rules.json`. Evaluate EUR/VNĐ đã kiểm trực tiếp byte-identical; net `1382.0278125 / 1522.28375 / 1827.6215625`, green, sample 8.
+- Không có mâu thuẫn cần xin duyệt. Tầng 2 vẫn chờ đúng các input thật được nêu trong prompt; không tạo hoặc thay thế fixture HTML.
