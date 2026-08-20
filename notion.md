@@ -14,8 +14,8 @@
 
 ## 3. Tầng 2 — verify-live
 
-- Không chạy theo prompt. Không tạo fixture trong `tests/fixtures/live/`, không gọi mạng.
-- Chờ đủ 4 HTML thật lưu từ trình duyệt và `CUTI_LOTS_SOURCE_URL` fetch được.
+- Đã thử chạy; thất bại HTTP 403 khi lấy lot Catawiki (`var/live/2026-08-20/fetch-lots.log`), chưa có fixture HTML thật.
+- Chưa đủ bằng chứng để deploy nguồn thật; cần xử lý nguồn truy cập và chạy lại verify-live.
 
 ## 4. File thêm / sửa / xoá, kèm LOC sau khi sửa
 
@@ -28,6 +28,8 @@ Sửa:
 - `var/verify/2026-08-20/verify.log` — raw log tự sinh.
 - `NOTION_SANDBOX/PROVENANCE.json` — cập nhật lúc đóng gói.
 - `notion.md` — cập nhật lúc đóng gói.
+
+Lượt này ghi chú deploy, không đổi code/schema.
 
 Thêm:
 
@@ -48,4 +50,5 @@ Diff schema: không đổi bảng, cột, index hoặc kiểu dữ liệu; `src/
 
 ## 6. Phản biện spec, câu hỏi, thứ cần xin duyệt
 
-- Không có mâu thuẫn cần xin duyệt. Tầng 2 vẫn chờ đúng các input thật được nêu trong prompt; không tạo hoặc thay thế fixture HTML.
+- Chưa nên deploy production unattended. Trước khi deploy: sửa `CUTI_MATCH_THRESHOLD=85`, fail-fast khi còn nguồn mẫu, rehearsal backup/rollback migration, và recovery/lock cho outbox.
+- Cần pin runtime/dependency, chốt scheduler + persistent volume; nếu public thì thêm auth/TLS.
