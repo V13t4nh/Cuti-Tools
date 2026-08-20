@@ -11,6 +11,8 @@ from .config import Settings
 from .comparables import ScoredLot, find_comparables
 from .charts import cycle_position, heart_acceleration_rate
 from .errors import ScrapeError
+from .liquidity import liquidity_series
+from .liquidity_timeline import LiquidityWindow
 from .models import Condition
 from .normalize import Rules, classify
 
@@ -26,6 +28,7 @@ class ComparisonChartData:
     input_hammer_eur: float | None
     cycle_position: float | None = None
     heart_acceleration_rate: float | None = None
+    liquidity_series: tuple[LiquidityWindow, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +83,14 @@ def _chart_metrics(
     )
 
 
+def _liquidity_chart(
+    matches: list[ScoredLot], settings: Settings, today: date
+) -> tuple[LiquidityWindow, ...] | None:
+    if len(matches) < settings.min_comparables:
+        return None
+    return liquidity_series([item.lot for item in matches], settings, today)
+
+
 def evaluate_deal_with_chart(
     conn: sqlite3.Connection,
     rules: Rules,
@@ -113,6 +124,7 @@ def evaluate_deal_with_chart(
         settings=settings,
     )
     cycle, acceleration = _chart_metrics(matches, settings, reference_day)
+    timeline = _liquidity_chart(matches, settings, reference_day)
     chart = ComparisonChartData(
         hammer_prices_eur=tuple(hammers) if len(matches) >= settings.min_comparables else (),
         input_hammer_eur=(
@@ -120,6 +132,7 @@ def evaluate_deal_with_chart(
         ),
         cycle_position=cycle,
         heart_acceleration_rate=acceleration,
+        liquidity_series=timeline,
     )
     return BuyerEvaluation(decision=decision, chart=chart)
 
@@ -150,11 +163,13 @@ def comparison_chart_data(
     )
     if len(matches) < settings.min_comparables:
         cycle, acceleration = _chart_metrics(matches, settings, reference_day)
+        timeline = _liquidity_chart(matches, settings, reference_day)
         return ComparisonChartData(
             hammer_prices_eur=(),
             input_hammer_eur=None,
             cycle_position=cycle,
             heart_acceleration_rate=acceleration,
+            liquidity_series=timeline,
         )
     _, price, hammers = _evaluate_matches(
         query=query,
@@ -165,9 +180,11 @@ def comparison_chart_data(
         settings=settings,
     )
     cycle, acceleration = _chart_metrics(matches, settings, reference_day)
+    timeline = _liquidity_chart(matches, settings, reference_day)
     return ComparisonChartData(
         hammer_prices_eur=tuple(hammers),
         input_hammer_eur=price.break_even_hammer_eur,
         cycle_position=cycle,
         heart_acceleration_rate=acceleration,
+        liquidity_series=timeline,
     )

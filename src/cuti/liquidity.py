@@ -5,11 +5,13 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 from datetime import date, timedelta
+from typing import cast
 
 from .config import Settings
 from .models import Lot, WatchForm
 from .pricing import percentile
 from .storage import fetch_lots_for_liquidity
+from .liquidity_timeline import LiquidityWindow, build_windows, trend_status
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +27,7 @@ class BrandLiquidity:
     index: float
     latest_qoq_change: float | None
     stop_buying: bool
+    status: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +77,45 @@ def _quarter_start(day: date) -> date:
     return date(day.year, ((day.month - 1) // 3) * 3 + 1, 1)
 
 
+def liquidity_windows(
+    lots: list[Lot], settings: Settings, today: date
+) -> tuple[LiquidityWindow | None, ...]:
+    """Return completed-quarter liquidity metrics for the configured window."""
+    def metrics_with_raw_heart(
+        quarter_lots: list[Lot], quarter_settings: Settings
+    ) -> tuple[int, float, float | None, float, float | None, float]:
+        sold, sell_through, median_days, speed, _aggregate, index = _metrics(
+            quarter_lots, quarter_settings
+        )
+        return (
+            sold,
+            sell_through,
+            median_days,
+            speed,
+            heart_to_hammer_rate(quarter_lots, quarter_settings),
+            index,
+        )
+
+    return build_windows(lots, settings, today, metrics_with_raw_heart)
+
+
+def liquidity_status(
+    windows: tuple[LiquidityWindow | None, ...], settings: Settings
+) -> str | None:
+    """Return declining, stable, or improving for the latest two windows."""
+    return trend_status(windows, settings.liquidity_decline_rate)
+
+
+def liquidity_series(
+    lots: list[Lot], settings: Settings, today: date
+) -> tuple[LiquidityWindow, ...] | None:
+    """Return a renderable series, or ``None`` when any window lacks data."""
+    windows = liquidity_windows(lots, settings, today)
+    if any(window is None for window in windows):
+        return None
+    return cast(tuple[LiquidityWindow, ...], windows)
+
+
 def _previous_completed_quarters(today: date, count: int = 3) -> tuple[tuple[date, date], ...]:
     end = _quarter_start(today) - timedelta(days=1)
     periods: list[tuple[date, date]] = []
@@ -108,6 +150,7 @@ def _score_group(
 ) -> BrandLiquidity:
     sold, sell_through, median_days, speed, heart_to_hammer, index = _metrics(lots, settings)
     latest_change, stop_buying = _quarterly_trend(lots, settings, today)
+    status = liquidity_status(liquidity_windows(lots, settings, today), settings)
     return BrandLiquidity(
         brand=brand,
         form=form,
@@ -120,6 +163,7 @@ def _score_group(
         index=index,
         latest_qoq_change=latest_change,
         stop_buying=stop_buying,
+        status=status,
     )
 
 

@@ -111,9 +111,9 @@ def execute(
             return 1
     elif args.command == "liquidity":
         report = operations["compute_liquidity"](conn, settings, today)
-        rows = [{"brand": item.brand, "form": item.form.value, "lots": item.lots, "sold": item.sold, "sell_through": round(item.sell_through, 4), "median_days_to_close": item.median_days_to_close, "heart_to_hammer": round(item.heart_to_hammer, 4), "index": round(item.index, 4), "latest_qoq_change": item.latest_qoq_change, "stop_buying": item.stop_buying} for item in report.brands]
-        lines = [f"{'brand/form':<28}{'lots':>6}{'sold':>6}{'sell%':>8}{'days':>8}{'index':>8}{'qoq':>8}"]
-        lines.extend(f"{item.brand + '/' + item.form.value:<28}{item.lots:>6}{item.sold:>6}{item.sell_through * 100:>7.0f}%" + (f"{'-':>8}" if item.median_days_to_close is None else f"{item.median_days_to_close:>8.1f}") + f"{item.index:>8.3f}" + (f"{'-':>8}" if item.latest_qoq_change is None else f"{item.latest_qoq_change:>8.0%}") for item in report.brands)
+        rows = [{"brand": item.brand, "form": item.form.value, "lots": item.lots, "sold": item.sold, "sell_through": round(item.sell_through, 4), "median_days_to_close": item.median_days_to_close, "heart_to_hammer": round(item.heart_to_hammer, 4), "index": round(item.index, 4), "latest_qoq_change": item.latest_qoq_change, "stop_buying": item.stop_buying, "status": item.status} for item in report.brands]
+        lines = [f"{'brand/form':<28}{'lots':>6}{'sold':>6}{'sell%':>8}{'days':>8}{'index':>8}{'qoq':>8}{'status':>12}"]
+        lines.extend(f"{item.brand + '/' + item.form.value:<28}{item.lots:>6}{item.sold:>6}{item.sell_through * 100:>7.0f}%" + (f"{'-':>8}" if item.median_days_to_close is None else f"{item.median_days_to_close:>8.1f}") + f"{item.index:>8.3f}" + (f"{'-':>8}" if item.latest_qoq_change is None else f"{item.latest_qoq_change:>8.0%}") + f"{('-' if item.status is None else item.status):>12}" for item in report.brands)
         emit({"window_start": report.window_start, "window_end": report.window_end, "brands": rows, "excluded_groups": [{"brand": brand, "form": form.value, "lots": lots} for brand, form, lots in report.excluded_groups]}, args.json, lines)
     elif args.command == "report":
         path = operations["write_report"](conn, settings, today)

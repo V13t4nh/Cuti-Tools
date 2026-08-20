@@ -73,6 +73,23 @@ def _render_distribution(chart: ComparisonChartData, st: Any) -> None:
         st.metric("Vị trí chu kỳ", f"{chart.cycle_position:.0%}")
     if chart.heart_acceleration_rate is not None:
         st.metric("Gia tốc tim", f"{chart.heart_acceleration_rate:+.1%}")
+    _render_liquidity_series(chart, st)
+
+
+def _render_liquidity_series(chart: ComparisonChartData, st: Any) -> None:
+    """Render the accessor's liquidity series without changing its values."""
+    series = chart.liquidity_series
+    if series is None:
+        return
+    st.subheader("Thanh khoản theo thời gian")
+    st.bar_chart(tuple(window.sell_through_rate for window in series))
+    latest = series[-1]
+    st.metric("Sell-through gần nhất", latest.sell_through_rate)
+    if latest.heart_to_hammer_rate is not None:
+        st.metric("Heart → hammer gần nhất", latest.heart_to_hammer_rate)
+    if latest.median_days_to_close is not None:
+        st.metric("Median days to close gần nhất", latest.median_days_to_close)
+    st.metric("Sample size gần nhất", latest.sample_size)
 
 
 def _render_buyer_evaluation(result: BuyerEvaluation, st: Any) -> None:

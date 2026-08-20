@@ -55,6 +55,8 @@ test_streamlit_and_charts_imports_are_inside_ui_functions (test_app.AppImportTes
 test_app_hides_missing_chart_metrics (test_app.BuyerChartRenderTests.test_app_hides_missing_chart_metrics) ... ok
 test_app_renders_accessor_cycle_and_heart_values_verbatim (test_app.BuyerChartRenderTests.test_app_renders_accessor_cycle_and_heart_values_verbatim) ... ok
 test_app_renders_max_buy_cap_verbatim_and_hides_missing_cap (test_app.BuyerChartRenderTests.test_app_renders_max_buy_cap_verbatim_and_hides_missing_cap) ... ok
+test_hides_series_and_missing_latest_metrics (test_app_liquidity.BuyerLiquidityRenderTests.test_hides_series_and_missing_latest_metrics) ... ok
+test_renders_raw_accessor_values_without_numeric_formatting (test_app_liquidity.BuyerLiquidityRenderTests.test_renders_raw_accessor_values_without_numeric_formatting) ... ok
 test_empty_id_list_makes_no_request (test_catawiki_api.CatawikiApiTests.test_empty_id_list_makes_no_request) ... ok
 test_live_states_batches_ids_into_one_request (test_catawiki_api.CatawikiApiTests.test_live_states_batches_ids_into_one_request) ... ok
 test_outcome_requests_eur_and_counts_requests (test_catawiki_api.CatawikiApiTests.test_outcome_requests_eur_and_counts_requests) ... ok
@@ -166,6 +168,12 @@ test_omega_vintage_reference_reads_caliber_from_description (test_identity_refer
 test_rolex_five_digit_parenthesized_reference_stays_whole (test_identity_reference_shapes.IdentityReferenceShapeTests.test_rolex_five_digit_parenthesized_reference_stays_whole) ... ok
 test_rolex_six_digit_reference_with_suffix_stays_whole (test_identity_reference_shapes.IdentityReferenceShapeTests.test_rolex_six_digit_reference_with_suffix_stays_whole) ... ok
 test_seiko_four_by_four_reference_splits (test_identity_reference_shapes.IdentityReferenceShapeTests.test_seiko_four_by_four_reference_splits) ... ok
+test_existing_liquidity_index_rows_are_unchanged (test_liquidity_scale3.LiquidityCliScale3Tests.test_existing_liquidity_index_rows_are_unchanged) ... ok
+test_first_partial_quarter_respects_configured_cutoff (test_liquidity_scale3.LiquidityTimelineTests.test_first_partial_quarter_respects_configured_cutoff) ... ok
+test_missing_window_is_none_and_status_requires_two_windows (test_liquidity_scale3.LiquidityTimelineTests.test_missing_window_is_none_and_status_requires_two_windows) ... ok
+test_status_is_none_when_latest_or_prior_window_is_missing (test_liquidity_scale3.LiquidityTimelineTests.test_status_is_none_when_latest_or_prior_window_is_missing) ... ok
+test_status_uses_decline_threshold_for_all_three_states (test_liquidity_scale3.LiquidityTimelineTests.test_status_uses_decline_threshold_for_all_three_states) ... ok
+test_timeline_uses_configured_window_and_reuses_metrics (test_liquidity_scale3.LiquidityTimelineTests.test_timeline_uses_configured_window_and_reuses_metrics) ... ok
 test_builds_one_canonical_lot_url (test_live_details.DetailsPathTests.test_builds_one_canonical_lot_url) ... ok
 test_disabled_fetcher_never_calls_transport (test_live_details.DetailsPathTests.test_disabled_fetcher_never_calls_transport) ... ok
 test_enabled_details_resolve_fields_and_description (test_live_details.DetailsPathTests.test_enabled_details_resolve_fields_and_description) ... ok
@@ -224,7 +232,7 @@ test_bad_usage_exits_with_code_two (test_pipeline_cli.CliTests.test_bad_usage_ex
                   [--form {round,rectangular,square,tonneau,other,unknown}]
 cuti quote: error: the following arguments are required: --cost-vnd, --condition
 ok
-test_configuration_error_exits_with_code_one (test_pipeline_cli.CliTests.test_configuration_error_exits_with_code_one) ... error: C:\Users\phama\AppData\Local\Temp\cuti-test-3ywyvpnj\config\rules.json: invalid JSON (Expecting property name enclosed in double quotes: line 1 column 2 (char 1))
+test_configuration_error_exits_with_code_one (test_pipeline_cli.CliTests.test_configuration_error_exits_with_code_one) ... error: C:\Users\phama\AppData\Local\Temp\cuti-test-uqwrf_5_\config\rules.json: invalid JSON (Expecting property name enclosed in double quotes: line 1 column 2 (char 1))
 ok
 test_full_workflow (test_pipeline_cli.CliTests.test_full_workflow) ... ok
 test_ingest_max_lots_and_invalid_limits (test_pipeline_cli.CliTests.test_ingest_max_lots_and_invalid_limits) ... error: max_lots must be a positive integer, got 0
@@ -364,12 +372,18 @@ test_verify_main_prints_and_logs_zero_live_fixtures (test_verify_scripts.VerifyS
 test_verify_reports_the_real_source_line_maximum (test_verify_scripts.VerifyScriptTests.test_verify_reports_the_real_source_line_maximum) ... ok
 
 ----------------------------------------------------------------------
-Ran 301 tests in 11.708s
+Ran 309 tests in 16.911s
 
 OK
+{
+  "lots_total": 384,
+  "lots_written": 384,
+  "pages_fetched": 8,
+  "stopped_reason": "no next page"
+}
 > D:\Projects\cuti-tools\.venv\Scripts\python.exe -m cuti.cli --home D:\Projects\cuti-tools --today 2026-08-01 --json init-db
 {
-  "db_path": "D:\\Projects\\cuti-tools\\var\\verify\\2026-08-20\\run-0e533d414232\\auctions.db",
+  "db_path": "D:\\Projects\\cuti-tools\\var\\verify\\2026-08-20\\run-045f5377e7c7\\auctions.db",
   "status": "ready"
 }
 > D:\Projects\cuti-tools\.venv\Scripts\python.exe -m cuti.cli --home D:\Projects\cuti-tools --today 2026-08-01 --json ingest
@@ -445,6 +459,7 @@ OK
       "median_days_to_close": 25.0,
       "sell_through": 0.8906,
       "sold": 57,
+      "status": "stable",
       "stop_buying": false
     },
     {
@@ -457,6 +472,7 @@ OK
       "median_days_to_close": 25.0,
       "sell_through": 0.8125,
       "sold": 26,
+      "status": null,
       "stop_buying": false
     },
     {
@@ -469,6 +485,7 @@ OK
       "median_days_to_close": 25.0,
       "sell_through": 0.7969,
       "sold": 51,
+      "status": "stable",
       "stop_buying": false
     },
     {
@@ -481,6 +498,7 @@ OK
       "median_days_to_close": 20.0,
       "sell_through": 0.7812,
       "sold": 25,
+      "status": null,
       "stop_buying": false
     },
     {
@@ -493,6 +511,7 @@ OK
       "median_days_to_close": 25.0,
       "sell_through": 0.7656,
       "sold": 49,
+      "status": "declining",
       "stop_buying": false
     },
     {
@@ -505,6 +524,7 @@ OK
       "median_days_to_close": 29.0,
       "sell_through": 0.7188,
       "sold": 23,
+      "status": null,
       "stop_buying": false
     },
     {
@@ -517,6 +537,7 @@ OK
       "median_days_to_close": 27.0,
       "sell_through": 0.6875,
       "sold": 22,
+      "status": null,
       "stop_buying": false
     },
     {
@@ -529,6 +550,7 @@ OK
       "median_days_to_close": 27.0,
       "sell_through": 0.6875,
       "sold": 22,
+      "status": null,
       "stop_buying": false
     },
     {
@@ -541,6 +563,7 @@ OK
       "median_days_to_close": 26.0,
       "sell_through": 0.6562,
       "sold": 21,
+      "status": "declining",
       "stop_buying": false
     }
   ],
@@ -550,7 +573,7 @@ OK
 }
 > D:\Projects\cuti-tools\.venv\Scripts\python.exe -m cuti.cli --home D:\Projects\cuti-tools --today 2026-08-01 --json report
 {
-  "report_path": "D:\\Projects\\cuti-tools\\var\\verify\\2026-08-20\\run-0e533d414232\\report.html"
+  "report_path": "D:\\Projects\\cuti-tools\\var\\verify\\2026-08-20\\run-045f5377e7c7\\report.html"
 }
 > D:\Projects\cuti-tools\.venv\Scripts\python.exe -m cuti.cli --home D:\Projects\cuti-tools --today 2026-08-01 --json status
 {
@@ -561,7 +584,7 @@ OK
     "sent": 1
   },
   "base_dir": "D:\\Projects\\cuti-tools",
-  "db_path": "D:\\Projects\\cuti-tools\\var\\verify\\2026-08-20\\run-0e533d414232\\auctions.db",
+  "db_path": "D:\\Projects\\cuti-tools\\var\\verify\\2026-08-20\\run-045f5377e7c7\\auctions.db",
   "deals": 5,
   "live_watch": 0,
   "lots": 384,
@@ -575,6 +598,6 @@ SRC_LOC_MAX=230
 FROZEN_SHA256 src/cuti/pricing.py d58c8a60346d94674cd6f672fada189d841622b70e985159b3727dd321568f1b
 FROZEN_SHA256 src/cuti/storage/schema_ddl.py 8f344c63b7d334e307a28f811b4afedd728b9cb657bfb74ba132a9c631782883
 FROZEN_SHA256 config/rules.json 364779655e3237f71a3787e0343fe4f3a2a6751fdbf2a46f3bdfa649a745f45e
-VERIFY OK — artifacts: D:\Projects\cuti-tools\var\verify\2026-08-20\run-0e533d414232
+VERIFY OK — artifacts: D:\Projects\cuti-tools\var\verify\2026-08-20\run-045f5377e7c7
 ALERTS_SENT=1
 EXIT=0
