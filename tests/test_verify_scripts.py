@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import hashlib
 import sqlite3
 from contextlib import redirect_stdout
 from datetime import date
@@ -12,7 +13,16 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from scripts.verify import _alerts_sent, _environment_trace, _live_fixture_count, _source_loc_max, main
+from scripts.verify import (
+    FrozenFileError,
+    _alerts_sent,
+    _environment_trace,
+    _frozen_markers,
+    _frozen_sha256,
+    _live_fixture_count,
+    _source_loc_max,
+)
+from scripts.verify import main
 from scripts.verify_live import _run_pipeline
 
 
@@ -52,6 +62,35 @@ class VerifyScriptTests(unittest.TestCase):
     def test_verify_reports_the_real_source_line_maximum(self) -> None:
         self.assertLessEqual(_source_loc_max(), 230)
 
+    def test_frozen_sha256_reads_exact_temp_file_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "frozen.bin"
+            payload = b"frozen bytes\x00\xff"
+            path.write_bytes(payload)
+            expected = hashlib.sha256(payload).hexdigest()
+            self.assertEqual(_frozen_sha256(path), expected)
+
+    def test_frozen_sha256_missing_file_is_typed_error(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(FrozenFileError):
+                _frozen_sha256(Path(directory) / "missing.py")
+
+    def test_frozen_markers_use_deterministic_paths_and_hashes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = (
+                "src/cuti/pricing.py",
+                "src/cuti/storage/schema_ddl.py",
+                "config/rules.json",
+            )
+            for relative in paths:
+                target = root / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(relative.encode("ascii"))
+            markers = _frozen_markers(root)
+            self.assertEqual([line.split()[1] for line in markers], list(paths))
+            self.assertEqual(len(markers), 3)
+
     def test_live_fixture_count_is_zero_without_fixture_directory(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             with patch("scripts.verify.PROJECT_ROOT", Path(directory)):
@@ -70,6 +109,14 @@ class VerifyScriptTests(unittest.TestCase):
     def test_verify_main_prints_and_logs_zero_live_fixtures(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            for relative in (
+                "src/cuti/pricing.py",
+                "src/cuti/storage/schema_ddl.py",
+                "config/rules.json",
+            ):
+                target = root / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(relative.encode("ascii"))
             output = StringIO()
             with patch("scripts.verify.PROJECT_ROOT", root), patch(
                 "scripts.verify._environment_trace"

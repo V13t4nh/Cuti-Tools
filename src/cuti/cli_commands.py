@@ -28,6 +28,7 @@ def _evaluation_payload(result: DealEvaluation) -> dict[str, object]:
         "net_p75_eur": result.net_p75_eur,
         "threshold_eur": result.threshold_eur,
         "median_days_to_close": result.median_days_to_close,
+        "max_buy_cost_vnd": result.max_buy_cost_vnd,
     }
 
 

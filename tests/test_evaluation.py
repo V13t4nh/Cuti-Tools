@@ -59,7 +59,9 @@ class EvaluationTests(ProjectTestCase):
 
     def test_expensive_input_is_red_at_threshold(self):
         self._seed()
-        self.assertEqual(self._evaluate(cost=100_000).verdict, Verdict.RED)
+        result = self._evaluate(cost=100_000)
+        self.assertEqual(result.verdict, Verdict.RED)
+        self.assertIsNotNone(result.max_buy_cost_vnd)
 
     def test_thin_pool_has_no_guessed_profit(self):
         self._seed(count=2)
@@ -217,7 +219,7 @@ class EvaluationTests(ProjectTestCase):
                 "query", "model_key", "condition", "cost_eur", "verdict", "reason",
                 "sample_size", "attempt_count", "sell_through_rate", "heart_to_hammer_rate",
                 "net_p25_eur", "net_median_eur", "net_p75_eur", "threshold_eur",
-                "median_days_to_close",
+                "median_days_to_close", "max_buy_cost_vnd",
             },
         )
         self.assertNotIn("liquidity_index", vnd)

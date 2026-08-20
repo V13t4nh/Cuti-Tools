@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import sqlite3
 import subprocess
@@ -13,6 +14,29 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+FROZEN_FILES = (
+    "src/cuti/pricing.py",
+    "src/cuti/storage/schema_ddl.py",
+    "config/rules.json",
+)
+
+
+class FrozenFileError(FileNotFoundError):
+    """A file required by the frozen-source integrity check is missing."""
+
+
+def _frozen_sha256(path: Path) -> str:
+    if not path.is_file():
+        raise FrozenFileError(f"frozen file is missing: {path}")
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _frozen_markers(root: Path | None = None) -> list[str]:
+    root = PROJECT_ROOT if root is None else root
+    return [
+        f"FROZEN_SHA256 {relative} {_frozen_sha256(root / relative)}"
+        for relative in FROZEN_FILES
+    ]
 
 
 class _Log:
@@ -155,6 +179,9 @@ def main() -> int:
             marker = f"SRC_LOC_MAX={_source_loc_max()}"
             print(marker, flush=True)
             log.line(marker)
+            for frozen_marker in _frozen_markers():
+                print(frozen_marker, flush=True)
+                log.line(frozen_marker)
             success = f"VERIFY OK — artifacts: {run_dir}"
             print(f"\n{success}")
             log.line(success)

@@ -13,6 +13,7 @@ from .errors import PricingError, ScrapeError
 from .liquidity import heart_to_hammer_rate
 from .models import Condition, Verdict
 from .normalize import Rules
+from .price_limit import max_buy_cost_vnd
 from .pricing import PriceQuote, quote
 
 
@@ -48,6 +49,7 @@ class DealEvaluation:
     net_p75_eur: float | None
     threshold_eur: float
     median_days_to_close: float | None
+    max_buy_cost_vnd: int | None
 
     @classmethod
     def from_quote(
@@ -60,6 +62,7 @@ class DealEvaluation:
         minimum_comparables: int,
         sell_through_rate: float | None = None,
         heart_to_hammer_rate: float | None = None,
+        max_buy_cost_vnd: int | None = None,
     ) -> "DealEvaluation":
         if price.verdict is Verdict.INSUFFICIENT_DATA:
             reason = (
@@ -88,6 +91,7 @@ class DealEvaluation:
             net_p75_eur=price.net_p75_eur,
             threshold_eur=price.threshold_eur,
             median_days_to_close=price.median_days_to_close,
+            max_buy_cost_vnd=max_buy_cost_vnd,
         )
 
 
@@ -126,9 +130,10 @@ def _evaluate_matches(
     if any(value is None for value in hammers):
         raise ValueError("a sold comparable is missing its hammer price")
     hammer_values = [int(value) for value in hammers if value is not None]
+    days_to_close = [item.lot.days_to_close for item in sold]
     price = quote(
         hammer_values,
-        [item.lot.days_to_close for item in sold],
+        days_to_close,
         cost_vnd,
         settings,
         attempt_count=len(matches),
@@ -141,6 +146,7 @@ def _evaluate_matches(
         minimum_comparables=settings.min_comparables,
         sell_through_rate=sell_through_rate,
         heart_to_hammer_rate=heart_rate,
+        max_buy_cost_vnd=max_buy_cost_vnd(hammer_values, days_to_close, settings),
     )
     return result, price, hammer_values
 

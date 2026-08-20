@@ -6,7 +6,6 @@ import unittest
 
 from cuti.pipeline import watch_deals
 from cuti.price_limit import max_buy_cost_vnd
-from cuti.pricing import quote
 from cuti.storage import count_rows, outbox_counts
 
 from support import NOW, TODAY, ProjectTestCase, make_lot
@@ -24,16 +23,19 @@ class _FailingNotifier:
 
 class PriceLimitTests(ProjectTestCase):
     def test_cap_is_quote_compatible_and_thin_pool_is_none(self) -> None:
-        price = quote([5000] * 6, [10] * 6, 1_000_000, self.settings)
-        cap = max_buy_cost_vnd(price, self.settings)
+        hammers = [5000] * 6
+        days = [10] * 6
+        cap = max_buy_cost_vnd(hammers, days, self.settings)
 
         self.assertIsNotNone(cap)
         assert cap is not None
-        self.assertEqual(quote([5000] * 6, [10] * 6, cap, self.settings).verdict.value, "green")
-        self.assertNotEqual(quote([5000] * 6, [10] * 6, cap + 1, self.settings).verdict.value, "green")
+        self.assertEqual(cap, 98_814_130)
+        from cuti.pricing import quote
 
-        thin = quote([5000] * 4, [10] * 4, 1_000_000, self.settings)
-        self.assertIsNone(max_buy_cost_vnd(thin, self.settings))
+        self.assertEqual(quote(hammers, days, cap, self.settings).verdict.value, "green")
+        self.assertNotEqual(quote(hammers, days, cap + 1, self.settings).verdict.value, "green")
+
+        self.assertIsNone(max_buy_cost_vnd([5000] * 4, [10] * 4, self.settings))
 
 
 class WatchOutboxTests(ProjectTestCase):
@@ -76,12 +78,19 @@ class WatchOutboxTests(ProjectTestCase):
         self.assertEqual(count_rows(self.conn, "alert_outbox"), 1)
         self.assertEqual(outbox_counts(self.conn)["sent"], 1)
 
-        pool = quote([5000] * 6, [10] * 6, 1_000_000, self.settings)
-        cap = max_buy_cost_vnd(pool, self.settings)
+        cap = max_buy_cost_vnd([5000] * 6, [10] * 6, self.settings)
         assert cap is not None
         self._feed(cap + 1, "over-cap")
         watch_deals(self.conn, self.rules, self.settings, _GoodNotifier(), today=TODAY, now=NOW)
         self.assertEqual(count_rows(self.conn, "alert_outbox"), 1)
+
+    def test_red_deal_has_no_alert(self) -> None:
+        self._feed(98_814_131, "red")
+        report = watch_deals(
+            self.conn, self.rules, self.settings, _GoodNotifier(), today=TODAY, now=NOW
+        )
+        self.assertEqual(report.verdicts[0][1].value, "red")
+        self.assertEqual(count_rows(self.conn, "alert_outbox"), 0)
 
     def test_failing_notifier_increments_attempts_then_dead(self) -> None:
         self._feed(1_000_000, "failing")

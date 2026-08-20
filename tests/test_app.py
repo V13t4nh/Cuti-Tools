@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import importlib
+from dataclasses import replace
 from pathlib import Path
 import unittest
 from datetime import date
@@ -35,8 +36,66 @@ class _RecordingStreamlit:
     def bar_chart(self, value: object) -> None:
         self.bar_charts.append(value)
 
+    def success(self, _value: str) -> None:
+        return None
+
+    def warning(self, _value: str) -> None:
+        return None
+
+    def error(self, _value: str) -> None:
+        return None
+
+    def info(self, _value: str) -> None:
+        return None
+
+    def caption(self, _value: str) -> None:
+        return None
+
+    def columns(self, count: int) -> list["_RecordingStreamlit"]:
+        return [self for _ in range(count)]
+
 
 class BuyerChartRenderTests(ProjectTestCase):
+    def test_app_renders_max_buy_cap_verbatim_and_hides_missing_cap(self) -> None:
+        self.seed_lots(
+            [
+                make_lot(
+                    f"lot-{index}",
+                    title=QUERY,
+                    hammer_eur=1000 + index * 100,
+                )
+                for index in range(8)
+            ]
+        )
+        result = evaluate_deal_with_chart(
+            self.conn,
+            self.rules,
+            self.settings,
+            query=QUERY,
+            cost=1000,
+            currency="eur",
+            condition=Condition.NAKED,
+            today=TODAY,
+        )
+        recorder = _RecordingStreamlit()
+
+        from cuti.app import _render_result
+
+        _render_result(result.decision, recorder)
+
+        rendered = dict(recorder.metrics)
+        self.assertIn("Giá nhập tối đa (VNĐ)", rendered)
+        self.assertEqual(
+            rendered["Giá nhập tối đa (VNĐ)"], result.decision.max_buy_cost_vnd
+        )
+
+        missing = replace(result.decision, max_buy_cost_vnd=None)
+        missing_recorder = _RecordingStreamlit()
+        _render_result(missing, missing_recorder)
+        self.assertNotIn(
+            "Giá nhập tối đa (VNĐ)", dict(missing_recorder.metrics)
+        )
+
     def test_app_renders_accessor_cycle_and_heart_values_verbatim(self) -> None:
         self.seed_lots(
             [

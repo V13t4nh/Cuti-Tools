@@ -36,6 +36,8 @@ def _render_result(result: DealEvaluation, st: Any) -> None:
         "insufficient_data": st.info,
     }.get(verdict, st.info)
     renderer(f"Verdict: {verdict}")
+    if result.max_buy_cost_vnd is not None:
+        st.metric("Giá nhập tối đa (VNĐ)", result.max_buy_cost_vnd)
 
     st.metric("Số mẫu so sánh", result.sample_size)
     st.metric("Tỷ lệ bán (sell-through)", _rate(result.sell_through_rate))
