@@ -1,47 +1,50 @@
-# Bàn giao vòng 11 — Scale 1 Buyer và chặn xác nhận fixture rỗng
+# Bàn giao vòng 12 — Scale 2 offline: giá sàn và alert outbox
 
 ## 1. Commit hash + ngày đóng gói
 
-- Source commit: `05a905fe78566f44de594d613cf71823553cd217`.
+- Source commit: `eca10f12aa086434b5fcbd0b7e32dfa34ce8d478`.
 - Ngày đóng gói: 2026-08-20 (Asia/Bangkok).
 - `NOTION_SANDBOX/PROVENANCE.json` dùng cùng source commit.
 
 ## 2. Tầng 1 — verify offline
 
-- Raw log: `var/verify/2026-08-20/verify.log`; dòng 1 là lệnh, dòng 51 là `LIVE_FIXTURES=0`, dòng 357 là `Ran 291 tests`, dòng 359 là `OK`, dòng 564 là `SRC_LOC_MAX=230`, dòng 566 là `EXIT=0`.
-- Không có skip hoặc request mạng trong tầng 1.
+- Raw log: `var/verify/2026-08-20/verify.log`. Các mốc theo tên: `COMMAND=`, `CUTI_ENV_NAMES=(none)`, `LIVE_FIXTURES=0`, `Ran 296 tests`, `SRC_LOC_MAX=230`, `ALERTS_SENT=1`, `EXIT=0`.
+- Tầng 1 chạy offline; 296 test, 0 fail, 0 skip. `ALERTS_SENT=1` được đọc từ `alert_outbox` của chính database workflow mẫu.
 
 ## 3. Tầng 2 — verify-live
 
-- Không chạy trong vòng này theo prompt. Chưa có HTML người tải; trạng thái 403 trước đó còn nguyên tại `var/live/2026-08-20/fetch-lots.log`, dòng 51 (HTTP 403/392 byte), dòng 98 (`EXIT=1`).
-- Fixture lưu mới: không có; `LIVE_FIXTURES=0` được ghi tại tầng 1, dòng 51.
+- Không chạy trong vòng này theo prompt. Không có fixture HTML mới. Trạng thái 403 cũ còn nguyên tại `var/live/2026-08-20/fetch-lots.log` (mốc `REQUEST ... status=403`, `EXIT=1`).
 
 ## 4. File thêm / sửa / xoá, kèm LOC sau khi sửa
 
 Sửa:
 
-- `AGENTS.md` — 145 LOC (policy người dùng cập nhật).
-- `scripts/verify.py` — 155 LOC.
-- `src/cuti/evaluation_chart.py` — 173 LOC.
-- `tests/test_app.py` — 130 LOC.
-- `tests/test_charts_scale1.py` — 57 LOC.
-- `tests/test_verify_scripts.py` — 76 LOC.
-- `var/verify/2026-08-20/verify.log` — 566 LOC, raw log tự sinh.
+- `scripts/verify.py` — 173 LOC.
+- `src/cuti/pipeline/quote.py` — 157 LOC.
+- `tests/test_verify_scripts.py` — 111 LOC.
+- `var/verify/2026-08-20/verify.log` — 572 LOC, raw log tự sinh.
 - `NOTION_SANDBOX/PROVENANCE.json` — 11 LOC.
 - `notion.md` — cập nhật lúc đóng gói.
 
-Thêm/xoá: không có.
+Thêm:
+
+- `src/cuti/price_limit.py` — 41 LOC; tách để luật giá sàn chỉ tồn tại một nơi.
+- `tests/test_scale2_watch.py` — 110 LOC.
+
+Xoá: không có.
+
+Env mới: không có; dùng `CUTI_MIN_MARGIN_RATE` và `CUTI_MIN_PROFIT_EUR` sẵn có.
 
 Diff schema: không đổi bảng, cột, index hoặc kiểu dữ liệu; `src/cuti/storage/schema_ddl.py` không bị sửa.
 
 ## 5. Từng task được giao
 
-- T1: `scripts/verify.py` đếm đúng chỉ file `.html` thật trong `tests/fixtures/live/`, ghi/in `LIVE_FIXTURES=<n>` trước test. Test kiểm thư mục không có/không tồn tại ra 0, bỏ qua file không phải HTML và thư mục có đuôi `.html`, đồng thời kiểm raw log + stdout có `LIVE_FIXTURES=0`. Không tạo fixture giả, không skip.
-- T2: accessor chart trả cả `cycle_position` và `heart_acceleration_rate`; pool dưới `CUTI_MIN_COMPARABLES` trả `(None, None)` trước khi tính. UI đọc trực tiếp hai field này, chỉ render khi khác `None`. Không thêm field vào `DealEvaluation`, dependency, env hoặc số học UI.
-- T3: test parity offline dùng cùng `BuyerEvaluation.chart` để assert app hiển thị nguyên giá trị `cycle_position`/`heart_acceleration_rate`, và ẩn cả hai khi `None`. Test helpers sẵn có giữ ca chu kỳ tăng/gia tốc dương và chu kỳ giảm/gia tốc âm; test accessor bổ sung ca pool mỏng cả hai `None`.
-- T4: raw tầng 1 chứa `COMMAND=`, môi trường, `LIVE_FIXTURES=0`, `SRC_LOC_MAX=230`, `EXIT=0`; line-pointer nằm ở mục 2. `AGENTS.md` được đưa vào source commit theo chỉ dẫn.
+- T1: thêm `max_buy_cost_vnd(price, settings)`. Hàm nhận `PriceQuote` của pool đã đánh giá, trả giá VNĐ nguyên lớn nhất còn green tại p25; pool mỏng/không có p25 trả `None`. Hàm gọi lại `vnd_to_eur`, `profit_threshold`, `net_proceeds`, `decide` từ pricing; không có công thức fee thứ hai. Test dùng `quote` thật để chứng minh cap green, cap + 1 không green.
+- T2: `quote_watch` vẫn tìm pool và gọi `pricing.quote` đúng một lần, sau đó chỉ tạo payload outbox khi deal green và `ask_vnd <= max_buy_cost_vnd`. Test chạy `watch_deals` hai lần cùng SQLite/local feed, còn đúng một outbox row; deal vượt cap không tạo alert mới.
+- T3: test notifier luôn ném lỗi chạy qua `watch_deals` thật: attempts 1/pending, attempts 2/dead (theo `CUTI_ALERT_MAX_ATTEMPTS=2`), không row nào `sent`, và lần kế tiếp không retry vô hạn.
+- T4: raw log đổi empty marker thành `CUTI_ENV_NAMES=(none)`; thêm `ALERTS_SENT=<n>` trước `EXIT=`. Test kiểm count chỉ tính row `sent`, marker console/raw khi không fixture, và marker empty env.
 
 ## 6. Phản biện spec, câu hỏi, thứ cần xin duyệt
 
-- Không có thay đổi spec cần xin duyệt. Tầng 2 và bốn HTML browser vẫn là nợ đã được prompt loại khỏi Vòng 11; không gọi lại mạng.
-- Không thêm dependency/env, không sửa `pricing.py`, DDL hoặc `config/rules.json`. `pricing.quote` vẫn được test gọi một lần cho mỗi pool; JSON CLI và số tiền không đổi qua suite offline.
+- `pricing.decide` hiện dùng biên strict: p25 net phải **lớn hơn** threshold mới green. Vì `pricing.py` cấm sửa, “giá đúng ngưỡng” được triển khai là giá VNĐ nguyên lớn nhất mà `quote` thật trả green; thêm 1 VNĐ không green. Đây là ca boundary kiểm trực tiếp qua pricing, không đổi công thức.
+- Không thêm dependency/env/schema, không sửa `pricing.py`, DDL hoặc `config/rules.json`. Tầng 2 và HTML người tải vẫn ngoài phạm vi Vòng 12; không gọi mạng.
