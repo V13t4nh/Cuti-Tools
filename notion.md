@@ -1,73 +1,62 @@
-# Bàn giao vòng 9-live — CHƯA ĐÓNG: Catawiki chặn 403
+# Bàn giao vòng 10 — Tầng 1 xanh; Tầng 2 chờ HTML người tải
 
 ## 1. Commit hash + ngày đóng gói
 
-- Source commit: `bfcf1d0665f6e85636ec6e3a186bb9d92823013d`
-- Ngày đóng gói: 2026-08-20 (Asia/Bangkok)
-- `NOTION_SANDBOX/PROVENANCE.json` ghi cùng source commit và trạng thái live bị chặn.
+- Source commit: `5e482667b18f6291128b287f4f01ecae14bffa9a`.
+- Ngày đóng gói: 2026-08-20 (Asia/Bangkok).
+- `NOTION_SANDBOX/PROVENANCE.json` dùng cùng source commit và kết quả 286 test.
 
 ## 2. Output verify thật, nguyên văn
 
-Máy Windows này không có GNU `make`; đã chạy trực tiếp thân lệnh `verify` bằng Python project-local, offline và không cài package:
+### Tầng 1 — verify offline
 
-```text
-> D:\\Projects\\cuti-tools\\.venv\\Scripts\\python.exe -m unittest discover -s tests -v
-
-----------------------------------------------------------------------
-Ran 281 tests in 8.918s
-
-OK
-
-VERIFY OK — artifacts: D:\\Projects\\cuti-tools\\var\\verify\\7d64717c1ff4
-VERIFY_EXIT=0
-SRC_LOC_MAX=230_OK
-```
-
-Kết quả tầng 1: 281 passed, 0 failed, 0 skipped. `scripts/verify.py` là thân lệnh của target `make verify` và chạy offline.
+- Raw log: `var/verify/2026-08-20/verify.log`; dòng 1 là lệnh thực tế, dòng 351 là `Ran 286 tests`, dòng 558 là `SRC_LOC_MAX=230`, dòng 560 là `EXIT=0`.
+- Log chứa stdout/stderr của toàn bộ test và workflow mẫu nguyên trạng; không có dòng ghép tay trong mục này.
 
 ### Tầng 2 — verify-live
 
-- Lệnh `D:\\Projects\\cuti-tools\\.venv\\Scripts\\python.exe scripts\\verify_live.py` đã chạy, thất bại exit `1`: [var/live/2026-08-20/verify-live.log](var/live/2026-08-20/verify-live.log), dòng 1 là lệnh, dòng 87 là `EXIT=1`.
-- Lot `106019970`: HTTP `403`, `392` byte: [var/live/2026-08-20/fetch-lots.log](var/live/2026-08-20/fetch-lots.log), dòng 51; raw response nguyên văn ở dòng 52–63; exit ở dòng 98.
-- Lot `105924279`, `105418344`, `105809071`: không có HTTP status/byte vì script dừng ngay sau 403 lot đầu theo T2.
-- T4 (`ingest`, `evaluate`, `liquidity`, `report`, `status`): không chạy vì T2 phải dừng ngay khi 403; không có raw log T4 hay số liệu DB thật.
+- Lần live trước: `var/live/2026-08-20/verify-live.log`; dòng 1 là lệnh, dòng 87 là `EXIT=1`.
+- Request `106019970`: `var/live/2026-08-20/fetch-lots.log`; dòng 51 ghi HTTP 403 và 392 byte, raw response ở dòng 52–63, dòng 98 là `EXIT=1`.
+- `105924279`, `105418344`, `105809071`: không có request trong raw log vì fetch dừng tại 403 đầu tiên. Vòng này không thử lại bằng user-agent hoặc proxy khác.
+- Không có HTML thật trong `tests/fixtures/live/` tại thời điểm đóng gói. Vì không có fixture/browser input mới và listing source cũ đã 403, không chạy live lại; do đó chưa có raw log pipeline Round 10 mới.
 
 ## 3. File thêm / sửa / xoá, kèm LOC sau khi sửa
 
 Sửa:
 
-- `Makefile` — 25 LOC
-- `src/cuti/config.py` — 97 LOC
-- `src/cuti/pipeline/report.py` — 230 LOC
-- `src/cuti/pipeline/settlement_resolver.py` — 228 LOC
-- `NOTION_SANDBOX/PROVENANCE.json` — 11 LOC
-- `notion.md` — 73 LOC
+- `README.md` — 214 LOC (gỡ tham chiếu `mermaid.md`).
+- `scripts/verify.py` — 147 LOC.
+- `scripts/verify_live.py` — 393 LOC.
+- `src/cuti/cli_commands.py` — 127 LOC.
+- `src/cuti/cli_parser.py` — 77 LOC.
+- `src/cuti/pipeline/ingest.py` — 116 LOC.
+- `tests/test_pipeline_cli.py` — 355 LOC.
+- `NOTION_SANDBOX/PROVENANCE.json` — 11 LOC.
+- `notion.md` — cập nhật lúc đóng gói.
 
 Thêm:
 
-- `scripts/verify_live.py` — 390 LOC
-- `src/cuti/config_specs.py` — 163 LOC
-- `src/cuti/pipeline/settlement_resolver_keys.py` — 29 LOC
-- `tests/test_verify_live.py` — 32 LOC
-- `var/live/2026-08-20/fetch-lots.log` — 98 LOC, raw log tự sinh
-- `var/live/2026-08-20/verify-live.log` — 87 LOC, raw log tự sinh
+- `tests/test_live_lot_fixtures.py` — 42 LOC.
+- `tests/test_verify_scripts.py` — 42 LOC.
+- `var/verify/2026-08-20/verify.log` — 560 LOC, raw log tự sinh.
 
-Xoá: không có.
+Xoá:
+
+- `mermaid.md` — 298 LOC.
 
 Diff schema: không đổi bảng, cột hoặc index; `src/cuti/storage/schema_ddl.py` không bị sửa.
 
 ## 4. Từng task được giao
 
-- T1: thêm `scripts/verify_live.py` và target `make verify-live`; thiếu `CUTI_LOTS_SOURCE_URL` hoặc `CUTI_CATAWIKI_API_BASE` sẽ in rõ tên biến thiếu và exit 0. Cổng offline không gọi network.
-- T2: script có đúng 4 lot (dưới trần 5), delay tối thiểu 1 giây, retry tối đa 2 cho timeout/429/5xx, telemetry URL/status/bytes/ms. Lần chạy thật bị HTTP 403 ngay `106019970`; response được giữ nguyên trong raw log và script dừng, không đổi user-agent/proxy.
-- T3: chưa làm được vì không có HTML lot thật sau 403. Không tạo fixture hay test giả. `parse_lot_page` hiện không có field sold/hammer; hai giá trị này thuộc `catawiki_api.parse_bidding_block`, cần quyết định nguồn fixture/assertion trước khi thêm test.
-- T4: chưa chạy vì T2 yêu cầu dừng ngay khi bị 403. Ngoài ra `ingest` hiện không có cap theo số lot và không fetch Details; không tự thêm hành vi đó ngoài prompt.
-- T5: raw log tự sinh đã force-add và commit; có command, Python/package, tên CUTI env, telemetry request và `EXIT` cuối file. Tầng 2 thất bại nên vòng không đóng.
-- Trần LOC mới: tách cơ học config và settlement resolver; mọi file trong `src/cuti` hiện không vượt 230 LOC, không đổi public API/default/schema.
+- T1: thêm test offline chỉ đọc các file HTML thật đang có. Test không tạo fixture giả, không skip; thư mục hiện trống nên test không có case fixture để chạy. Khi người dùng đặt bốn file đã nêu, cùng test sẽ kiểm brand, ref/case code, caliber (trừ Rolex được chỉ định `None`), movement và description; các expectation `7T12`/`0AT0`, `503`, `500`, `None`/`16234(Y)` đã có. Không kiểm sold/hammer từ HTML; chưa có payload bidding thật nên chưa có fixture JSON `parse_bidding_block`.
+- T2: thêm `cuti ingest --max-lots N`, mặc định `None` để giữ crawl 384 lot. Cap nằm trong `ingest_lots` trước `upsert_lots`; test xác nhận `10` ghi đúng 10, không flag vẫn 384, `0` và âm trả `ConfigError` qua CLI exit 1.
+- T3: `verify-live` chạy pipeline tiếp sau fetch thất bại: `init-db`, `ingest --max-lots 50`, `settle` với `CUTI_DETAILS_ENABLED=true`, rồi `evaluate`, `liquidity`, `report`, `status` dạng JSON. Thiếu source env vẫn exit 0 và không network. Kết quả live mới chưa có vì chưa có nguồn listing hợp lệ sau 403 cũ.
+- T4: `scripts/verify.py` tự sinh raw log ngày chạy với command, phiên bản Python, package, tên biến `CUTI_*`, toàn bộ output và `EXIT` cuối log; tự in giá trị LOC thật `SRC_LOC_MAX=230`. Tầng 1 đã chạy offline xanh 286 test. Tầng 2 giữ raw logs vòng trước và không được chỉnh/tóm tắt lại.
+- T5: đã xoá `mermaid.md` và gỡ tham chiếu khỏi README. Không có tham chiếu Mermaid trong nội dung `AGENTS.md` hiện hữu để gỡ; file `AGENTS.md` có thay đổi độc lập của người dùng nên không đưa vào commit này.
 
 ## 5. Phản biện spec, câu hỏi, thứ cần xin duyệt
 
-- Cần cung cấp cách truy cập Catawiki được nguồn cho phép hoặc bốn HTML đã tải hợp lệ. Prompt cấm đổi user-agent/proxy để lách, nên không có bước thử nào khác sau 403.
-- T3 yêu cầu sold/hammer trong test `parse_lot_page`, nhưng `LotDetails` không mang hai field này. Cần duyệt một trong: fixture JSON bidding riêng và test `parse_bidding_block`, hoặc thay đổi contract parser (không tự thực hiện).
-- T4 đòi `ingest` giới hạn 50 lot và fetch Details; hai khả năng này không tồn tại trên lệnh `ingest` hiện tại. Cần duyệt thay đổi hành vi/CLI nếu vẫn muốn T4 đúng chữ.
-- Không thêm dependency/env, không sửa DDL, `config/rules.json` hay `pricing.py`. GNU Make/WSL không có trên máy đóng gói; target đã tồn tại nhưng các lệnh thực tế ghi ở trên chạy bằng Python project-local.
+- Tầng 2 chưa đóng: cần người dùng đặt HTML đã tải bằng trình duyệt tại `tests/fixtures/live/106019970.html`, `105924279.html`, `105418344.html`, `105809071.html`. Không có fixture giả trong zip.
+- Sold/hammer không thuộc contract `parse_lot_page`; chỉ bổ sung test giá búa/trạng thái khi có payload bidding thật riêng cho `parse_bidding_block`.
+- Catawiki 403 cũ được giữ nguyên trong raw log. Không thử lại bằng user-agent hoặc proxy khác. Để có pipeline T3 thật cần `CUTI_LOTS_SOURCE_URL` cho phép fetch; không tinh chỉnh code để làm số liệu trông đẹp.
+- Không thêm dependency/env, không sửa `pricing.py`, DDL hay `config/rules.json`. Mọi file `src/cuti` hiện tối đa 230 dòng. Máy đóng gói không có GNU Make; lệnh đã chạy là thân lệnh Python project-local của `make verify`.
