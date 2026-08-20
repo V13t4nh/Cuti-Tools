@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import subprocess
 import sys
 import traceback
@@ -49,7 +50,21 @@ def _environment_trace(log: _Log, env: dict[str, str]) -> None:
         log.line()
     log.line("PACKAGES_END")
     names = sorted(name for name in env if name.startswith("CUTI_"))
-    log.line("CUTI_ENV_NAMES=" + ",".join(names))
+    log.line("CUTI_ENV_NAMES=" + (",".join(names) if names else "(none)"))
+
+
+def _alerts_sent(db_path: Path) -> int:
+    """Read the number of sent alerts from this verification run's database."""
+    if not db_path.is_file():
+        return 0
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM alert_outbox WHERE status = 'sent'"
+        ).fetchone()
+    finally:
+        conn.close()
+    return int(row[0]) if row is not None else 0
 
 
 def _source_loc_max() -> int:
@@ -147,6 +162,9 @@ def main() -> int:
             code = 1
             traceback.print_exc()
             traceback.print_exc(file=log.file)
+        alerts_marker = f"ALERTS_SENT={_alerts_sent(run_dir / 'auctions.db')}"
+        print(alerts_marker, flush=True)
+        log.line(alerts_marker)
         log.line(f"EXIT={code}")
         return code
 

@@ -12,6 +12,7 @@ from ..config import Settings
 from ..errors import ScrapeError
 from ..models import Condition, Deal, WatchForm
 from ..normalize import Rules, classify
+from ..price_limit import max_buy_cost_vnd
 from ..pricing import PriceQuote, quote
 from ..storage import ComparableSnapshot, insert_quote
 
@@ -100,7 +101,8 @@ def quote_watch(
         attempt_count=len(matches),
     )
     alert_payload = None
-    if deal is not None and price.is_actionable:
+    buy_limit = max_buy_cost_vnd(price, settings) if deal is not None and price.is_actionable else None
+    if deal is not None and price.is_actionable and buy_limit is not None and deal.ask_vnd <= buy_limit:
         alert_payload = _alert_payload(
             deal, model_key=classification.model_key, condition=effective_condition, form=form, price=price
         )

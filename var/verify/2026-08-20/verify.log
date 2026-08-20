@@ -47,7 +47,7 @@ uvicorn==0.52.1
 watchdog==6.0.0
 websockets==16.1.1
 PACKAGES_END
-CUTI_ENV_NAMES=
+CUTI_ENV_NAMES=(none)
 LIVE_FIXTURES=0
 > D:\Projects\cuti-tools\.venv\Scripts\python.exe -m unittest discover -s tests -v
 test_app_import_has_no_optional_dependency_side_effect (test_app.AppImportTests.test_app_import_has_no_optional_dependency_side_effect) ... ok
@@ -223,7 +223,7 @@ test_bad_usage_exits_with_code_two (test_pipeline_cli.CliTests.test_bad_usage_ex
                   [--form {round,rectangular,square,tonneau,other,unknown}]
 cuti quote: error: the following arguments are required: --cost-vnd, --condition
 ok
-test_configuration_error_exits_with_code_one (test_pipeline_cli.CliTests.test_configuration_error_exits_with_code_one) ... error: C:\Users\phama\AppData\Local\Temp\cuti-test-6yw3_t_9\config\rules.json: invalid JSON (Expecting property name enclosed in double quotes: line 1 column 2 (char 1))
+test_configuration_error_exits_with_code_one (test_pipeline_cli.CliTests.test_configuration_error_exits_with_code_one) ... error: C:\Users\phama\AppData\Local\Temp\cuti-test-u_9yrssl\config\rules.json: invalid JSON (Expecting property name enclosed in double quotes: line 1 column 2 (char 1))
 ok
 test_full_workflow (test_pipeline_cli.CliTests.test_full_workflow) ... ok
 test_ingest_max_lots_and_invalid_limits (test_pipeline_cli.CliTests.test_ingest_max_lots_and_invalid_limits) ... error: max_lots must be a positive integer, got 0
@@ -287,6 +287,9 @@ test_boundaries_are_closed_on_the_pessimistic_side (test_pricing.VerdictTests.te
 test_green_when_pessimistic_case_clears_threshold (test_pricing.VerdictTests.test_green_when_pessimistic_case_clears_threshold) ... ok
 test_red_when_median_does_not_clear (test_pricing.VerdictTests.test_red_when_median_does_not_clear) ... ok
 test_yellow_when_only_median_clears (test_pricing.VerdictTests.test_yellow_when_only_median_clears) ... ok
+test_cap_is_quote_compatible_and_thin_pool_is_none (test_scale2_watch.PriceLimitTests.test_cap_is_quote_compatible_and_thin_pool_is_none) ... ok
+test_failing_notifier_increments_attempts_then_dead (test_scale2_watch.WatchOutboxTests.test_failing_notifier_increments_attempts_then_dead) ... ok
+test_same_deal_twice_has_one_outbox_row_and_over_cap_has_none (test_scale2_watch.WatchOutboxTests.test_same_deal_twice_has_one_outbox_row_and_over_cap_has_none) ... ok
 test_bad_boolean_is_rejected (test_scrapers.CatawikiTests.test_bad_boolean_is_rejected) ... ok
 test_bad_date_is_rejected (test_scrapers.CatawikiTests.test_bad_date_is_rejected) ... ok
 test_duplicate_lot_ids_are_rejected (test_scrapers.CatawikiTests.test_duplicate_lot_ids_are_rejected) ... ok
@@ -347,6 +350,8 @@ test_lot_desc_round_trip_is_zlib_and_keeps_blob_out_of_lots (test_t6_storage_reg
 test_v3_migration_preserves_lot_and_adds_lot_desc (test_t6_storage_regressions.SchemaV4MigrationTests.test_v3_migration_preserves_lot_and_adds_lot_desc) ... ok
 test_dotenv_values_count_as_explicit_configuration (test_verify_live.VerifyLiveSourceGateTests.test_dotenv_values_count_as_explicit_configuration) ... ok
 test_missing_sources_are_reported_without_defaults (test_verify_live.VerifyLiveSourceGateTests.test_missing_sources_are_reported_without_defaults) ... ok
+test_alerts_sent_reads_sent_rows_only (test_verify_scripts.VerifyScriptTests.test_alerts_sent_reads_sent_rows_only) ... ok
+test_empty_cuti_environment_is_explicitly_marked (test_verify_scripts.VerifyScriptTests.test_empty_cuti_environment_is_explicitly_marked) ... ok
 test_live_fixture_count_includes_only_real_html_files (test_verify_scripts.VerifyScriptTests.test_live_fixture_count_includes_only_real_html_files) ... ok
 test_live_fixture_count_is_zero_without_fixture_directory (test_verify_scripts.VerifyScriptTests.test_live_fixture_count_is_zero_without_fixture_directory) ... ok
 test_live_pipeline_has_ingest_cap_and_settle_step (test_verify_scripts.VerifyScriptTests.test_live_pipeline_has_ingest_cap_and_settle_step) ... ok
@@ -354,12 +359,12 @@ test_verify_main_prints_and_logs_zero_live_fixtures (test_verify_scripts.VerifyS
 test_verify_reports_the_real_source_line_maximum (test_verify_scripts.VerifyScriptTests.test_verify_reports_the_real_source_line_maximum) ... ok
 
 ----------------------------------------------------------------------
-Ran 291 tests in 9.939s
+Ran 296 tests in 12.530s
 
 OK
 > D:\Projects\cuti-tools\.venv\Scripts\python.exe -m cuti.cli --home D:\Projects\cuti-tools --today 2026-08-01 --json init-db
 {
-  "db_path": "D:\\Projects\\cuti-tools\\var\\verify\\2026-08-20\\run-d8c45363ad15\\auctions.db",
+  "db_path": "D:\\Projects\\cuti-tools\\var\\verify\\2026-08-20\\run-e19b20395848\\auctions.db",
   "status": "ready"
 }
 > D:\Projects\cuti-tools\.venv\Scripts\python.exe -m cuti.cli --home D:\Projects\cuti-tools --today 2026-08-01 --json ingest
@@ -540,7 +545,7 @@ OK
 }
 > D:\Projects\cuti-tools\.venv\Scripts\python.exe -m cuti.cli --home D:\Projects\cuti-tools --today 2026-08-01 --json report
 {
-  "report_path": "D:\\Projects\\cuti-tools\\var\\verify\\2026-08-20\\run-d8c45363ad15\\report.html"
+  "report_path": "D:\\Projects\\cuti-tools\\var\\verify\\2026-08-20\\run-e19b20395848\\report.html"
 }
 > D:\Projects\cuti-tools\.venv\Scripts\python.exe -m cuti.cli --home D:\Projects\cuti-tools --today 2026-08-01 --json status
 {
@@ -551,7 +556,7 @@ OK
     "sent": 1
   },
   "base_dir": "D:\\Projects\\cuti-tools",
-  "db_path": "D:\\Projects\\cuti-tools\\var\\verify\\2026-08-20\\run-d8c45363ad15\\auctions.db",
+  "db_path": "D:\\Projects\\cuti-tools\\var\\verify\\2026-08-20\\run-e19b20395848\\auctions.db",
   "deals": 5,
   "live_watch": 0,
   "lots": 384,
@@ -562,5 +567,6 @@ OK
   "quotes": 6
 }
 SRC_LOC_MAX=230
-VERIFY OK — artifacts: D:\Projects\cuti-tools\var\verify\2026-08-20\run-d8c45363ad15
+VERIFY OK — artifacts: D:\Projects\cuti-tools\var\verify\2026-08-20\run-e19b20395848
+ALERTS_SENT=1
 EXIT=0

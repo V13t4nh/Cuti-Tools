@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import sqlite3
 from contextlib import redirect_stdout
 from datetime import date
 from io import StringIO
@@ -11,11 +12,43 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from scripts.verify import _live_fixture_count, _source_loc_max, main
+from scripts.verify import _alerts_sent, _environment_trace, _live_fixture_count, _source_loc_max, main
 from scripts.verify_live import _run_pipeline
 
 
 class VerifyScriptTests(unittest.TestCase):
+    def test_empty_cuti_environment_is_explicitly_marked(self) -> None:
+        class Log:
+            def __init__(self) -> None:
+                self.lines: list[str] = []
+
+            def line(self, text: str = "") -> None:
+                self.lines.append(text)
+
+            def write(self, text: str) -> None:
+                self.lines.append(text)
+
+        log = Log()
+        with patch("scripts.verify.subprocess.run") as run:
+            run.return_value.stdout = ""
+            _environment_trace(log, {})
+        self.assertIn("CUTI_ENV_NAMES=(none)", log.lines)
+
+    def test_alerts_sent_reads_sent_rows_only(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / "alerts.db"
+            conn = sqlite3.connect(db_path)
+            try:
+                conn.execute("CREATE TABLE alert_outbox (status TEXT)")
+                conn.executemany(
+                    "INSERT INTO alert_outbox(status) VALUES (?)",
+                    [("sent",), ("pending",), ("dead",), ("sent",)],
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            self.assertEqual(_alerts_sent(db_path), 2)
+
     def test_verify_reports_the_real_source_line_maximum(self) -> None:
         self.assertLessEqual(_source_loc_max(), 230)
 
@@ -48,7 +81,9 @@ class VerifyScriptTests(unittest.TestCase):
             log_path = root / "var" / "verify" / date.today().isoformat() / "verify.log"
             log = log_path.read_text(encoding="utf-8")
             self.assertIn("LIVE_FIXTURES=0\n", log)
+            self.assertIn("ALERTS_SENT=0\n", log)
             self.assertIn("LIVE_FIXTURES=0\n", output.getvalue())
+            self.assertIn("ALERTS_SENT=0\n", output.getvalue())
 
     def test_live_pipeline_has_ingest_cap_and_settle_step(self) -> None:
         settings = SimpleNamespace(
