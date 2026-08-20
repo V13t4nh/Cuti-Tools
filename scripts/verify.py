@@ -59,6 +59,11 @@ def _source_loc_max() -> int:
     )
 
 
+def _live_fixture_count() -> int:
+    fixture_dir = PROJECT_ROOT / "tests" / "fixtures" / "live"
+    return sum(1 for path in fixture_dir.glob("*.html") if path.is_file())
+
+
 def _run(arguments: list[str], env: dict[str, str], log: _Log) -> None:
     command = " ".join(arguments)
     print(f"\n> {command}", flush=True)
@@ -89,6 +94,9 @@ def main() -> int:
     with _Log(log_path) as log:
         log.line("COMMAND=" + " ".join([python, "scripts/verify.py"]))
         _environment_trace(log, os.environ)
+        fixture_marker = f"LIVE_FIXTURES={_live_fixture_count()}"
+        print(fixture_marker, flush=True)
+        log.line(fixture_marker)
         code = 0
         try:
             _run([python, "-m", "unittest", "discover", "-s", "tests", "-v"], test_env, log)

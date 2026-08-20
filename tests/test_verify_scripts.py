@@ -4,17 +4,51 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from datetime import date
+from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from scripts.verify import _source_loc_max
+from scripts.verify import _live_fixture_count, _source_loc_max, main
 from scripts.verify_live import _run_pipeline
 
 
 class VerifyScriptTests(unittest.TestCase):
     def test_verify_reports_the_real_source_line_maximum(self) -> None:
         self.assertLessEqual(_source_loc_max(), 230)
+
+    def test_live_fixture_count_is_zero_without_fixture_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("scripts.verify.PROJECT_ROOT", Path(directory)):
+                self.assertEqual(_live_fixture_count(), 0)
+
+    def test_live_fixture_count_includes_only_real_html_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture_dir = Path(directory) / "tests" / "fixtures" / "live"
+            fixture_dir.mkdir(parents=True)
+            (fixture_dir / "106019970.html").write_text("<html>", encoding="utf-8")
+            (fixture_dir / "notes.txt").write_text("not a fixture", encoding="utf-8")
+            (fixture_dir / "directory.html").mkdir()
+            with patch("scripts.verify.PROJECT_ROOT", Path(directory)):
+                self.assertEqual(_live_fixture_count(), 1)
+
+    def test_verify_main_prints_and_logs_zero_live_fixtures(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = StringIO()
+            with patch("scripts.verify.PROJECT_ROOT", root), patch(
+                "scripts.verify._environment_trace"
+            ), patch("scripts.verify._run"), patch(
+                "scripts.verify._source_loc_max", return_value=0
+            ), redirect_stdout(output):
+                self.assertEqual(main(), 0)
+
+            log_path = root / "var" / "verify" / date.today().isoformat() / "verify.log"
+            log = log_path.read_text(encoding="utf-8")
+            self.assertIn("LIVE_FIXTURES=0\n", log)
+            self.assertIn("LIVE_FIXTURES=0\n", output.getvalue())
 
     def test_live_pipeline_has_ingest_cap_and_settle_step(self) -> None:
         settings = SimpleNamespace(

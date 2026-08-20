@@ -6,6 +6,88 @@ import ast
 import importlib
 from pathlib import Path
 import unittest
+from datetime import date
+from unittest.mock import patch
+
+from cuti.app import _render_distribution
+from cuti.evaluation_chart import ComparisonChartData, evaluate_deal_with_chart
+from cuti.models import Condition
+
+from support import ProjectTestCase, TODAY, make_lot
+
+
+QUERY = "Omega Seamaster Diver 300M 210.30.42"
+
+
+class _RecordingStreamlit:
+    """Small offline recorder for asserting the UI's render contract."""
+
+    def __init__(self) -> None:
+        self.metrics: list[tuple[str, object]] = []
+        self.bar_charts: list[object] = []
+
+    def metric(self, label: str, value: object) -> None:
+        self.metrics.append((label, value))
+
+    def subheader(self, _value: str) -> None:
+        return None
+
+    def bar_chart(self, value: object) -> None:
+        self.bar_charts.append(value)
+
+
+class BuyerChartRenderTests(ProjectTestCase):
+    def test_app_renders_accessor_cycle_and_heart_values_verbatim(self) -> None:
+        self.seed_lots(
+            [
+                make_lot("q4", title=QUERY, ended_at=date(2025, 10, 1), hammer_eur=100),
+                make_lot("q1", title=QUERY, ended_at=date(2026, 1, 1), hammer_eur=200),
+                make_lot("q2", title=QUERY, ended_at=date(2026, 4, 1), hammer_eur=300),
+                make_lot("old", title=QUERY, ended_at=date(2026, 6, 15), hearts=10),
+                make_lot("new", title=QUERY, ended_at=date(2026, 7, 15), hearts=20),
+            ]
+        )
+        with patch(
+            "cuti.evaluation_chart.cycle_position", return_value=0.875
+        ), patch(
+            "cuti.evaluation_chart.heart_acceleration_rate", return_value=-0.25
+        ):
+            result = evaluate_deal_with_chart(
+                self.conn,
+                self.rules,
+                self.settings,
+                query=QUERY,
+                cost=1000,
+                currency="eur",
+                condition=Condition.NAKED,
+                today=TODAY,
+            )
+        recorder = _RecordingStreamlit()
+
+        _render_distribution(result.chart, recorder)
+
+        rendered = dict(recorder.metrics)
+        self.assertEqual(
+            rendered["Vị trí chu kỳ"], f"{result.chart.cycle_position:.0%}"
+        )
+        self.assertEqual(
+            rendered["Gia tốc tim"], f"{result.chart.heart_acceleration_rate:+.1%}"
+        )
+
+    def test_app_hides_missing_chart_metrics(self) -> None:
+        chart = ComparisonChartData(
+            hammer_prices_eur=(),
+            input_hammer_eur=None,
+            cycle_position=None,
+            heart_acceleration_rate=None,
+        )
+        recorder = _RecordingStreamlit()
+
+        _render_distribution(chart, recorder)
+
+        labels = {label for label, _ in recorder.metrics}
+        self.assertNotIn("Vị trí chu kỳ", labels)
+        self.assertNotIn("Gia tốc tim", labels)
 
 
 class AppImportTests(unittest.TestCase):

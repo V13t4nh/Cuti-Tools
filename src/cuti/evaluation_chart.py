@@ -70,6 +70,8 @@ def _inputs(
 def _chart_metrics(
     matches: list[ScoredLot], settings: Settings, today: date
 ) -> tuple[float | None, float | None]:
+    if len(matches) < settings.min_comparables:
+        return None, None
     lots = [item.lot for item in matches]
     window_days = settings.comparable_window_days
     return (

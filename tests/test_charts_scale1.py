@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from cuti.charts import hammer_histogram, price_position
 from cuti.evaluation import comparison_chart_data
+from cuti.evaluation_chart import evaluate_deal_with_chart
 from cuti.models import Condition
 
 from support import TODAY, ProjectTestCase, make_lot
@@ -39,3 +40,18 @@ class ScaleOneChartTests(ProjectTestCase):
         self.assertEqual(data.hammer_prices_eur, ())
         self.assertIsNone(data.input_hammer_eur)
         self.assertIsNone(price_position(100, list(data.hammer_prices_eur)))
+        self.assertIsNone(data.cycle_position)
+        self.assertIsNone(data.heart_acceleration_rate)
+
+        bundle = evaluate_deal_with_chart(
+            self.conn,
+            self.rules,
+            self.settings,
+            query=QUERY,
+            cost=1000,
+            currency="eur",
+            condition=Condition.NAKED,
+            today=TODAY,
+        )
+        self.assertIsNone(bundle.chart.cycle_position)
+        self.assertIsNone(bundle.chart.heart_acceleration_rate)
