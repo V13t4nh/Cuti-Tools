@@ -61,6 +61,11 @@ class IngestTests(ProjectTestCase):
         self.assertEqual(report.lots_written, 384)
         self.assertEqual(count_rows(self.conn, "lots"), 384)
 
+    def test_lot_limit_is_applied_before_write(self) -> None:
+        report = ingest_lots(self.conn, self.rules, self.settings, NOW, max_lots=10)
+        self.assertEqual(report.lots_written, 10)
+        self.assertEqual(count_rows(self.conn, "lots"), 10)
+
     def test_ingest_is_idempotent(self) -> None:
         ingest_lots(self.conn, self.rules, self.settings, NOW)
         ingest_lots(self.conn, self.rules, self.settings, NOW)
@@ -336,6 +341,14 @@ class CliTests(ProjectTestCase):
         ]
         with self.assertRaises(SystemExit):
             main(argv)
+
+    def test_ingest_max_lots_and_invalid_limits(self) -> None:
+        code, out = self._run("--json", "ingest", "--max-lots", "10")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["lots_total"], 10)
+        for value in ("0", "-1"):
+            with self.subTest(value=value):
+                self.assertEqual(self._run("ingest", "--max-lots", value)[0], 1)
 
 
 if __name__ == "__main__":

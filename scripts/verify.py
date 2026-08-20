@@ -1,68 +1,146 @@
-"""Run tests and a real sample-data workflow in an isolated project-local directory."""
+"""Run the hermetic test and sample-data workflow with a raw audit log."""
 
 from __future__ import annotations
 
 import os
 import subprocess
 import sys
+import traceback
 import uuid
+from datetime import date
 from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _run(arguments: list[str], env: dict[str, str]) -> None:
-    print(f"\n> {' '.join(arguments)}", flush=True)
-    subprocess.run(arguments, cwd=PROJECT_ROOT, env=env, check=True)
+class _Log:
+    def __init__(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.file = path.open("w", encoding="utf-8", newline="")
+
+    def line(self, text: str = "") -> None:
+        self.file.write(text + "\n")
+        self.file.flush()
+
+    def write(self, text: str) -> None:
+        self.file.write(text)
+        self.file.flush()
+
+    def __enter__(self) -> "_Log":
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.file.close()
+
+
+def _environment_trace(log: _Log, env: dict[str, str]) -> None:
+    log.line(f"PYTHON={sys.executable}")
+    log.line(f"PYTHON_VERSION={sys.version.split()[0]}")
+    packages = subprocess.run(
+        [sys.executable, "-m", "pip", "list", "--format=freeze"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    log.line("PACKAGES_BEGIN")
+    log.write(packages.stdout)
+    if packages.stdout and not packages.stdout.endswith("\n"):
+        log.line()
+    log.line("PACKAGES_END")
+    names = sorted(name for name in env if name.startswith("CUTI_"))
+    log.line("CUTI_ENV_NAMES=" + ",".join(names))
+
+
+def _source_loc_max() -> int:
+    return max(
+        len(path.read_text(encoding="utf-8").splitlines())
+        for path in (PROJECT_ROOT / "src" / "cuti").rglob("*.py")
+    )
+
+
+def _run(arguments: list[str], env: dict[str, str], log: _Log) -> None:
+    command = " ".join(arguments)
+    print(f"\n> {command}", flush=True)
+    log.line(f"> {command}")
+    result = subprocess.run(
+        arguments,
+        cwd=PROJECT_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        check=False,
+    )
+    if result.stdout:
+        print(result.stdout, end="", flush=True)
+        log.write(result.stdout)
+    if result.returncode:
+        raise subprocess.CalledProcessError(result.returncode, arguments)
 
 
 def main() -> int:
-    run_dir = PROJECT_ROOT / "var" / "verify" / uuid.uuid4().hex[:12]
+    day_dir = PROJECT_ROOT / "var" / "verify" / date.today().isoformat()
+    run_dir = day_dir / f"run-{uuid.uuid4().hex[:12]}"
     run_dir.mkdir(parents=True, exist_ok=False)
+    log_path = day_dir / "verify.log"
     test_env = {key: value for key, value in os.environ.items() if not key.startswith("CUTI_")}
     python = sys.executable
-    _run([python, "-m", "unittest", "discover", "-s", "tests", "-v"], test_env)
-
-    env = dict(test_env)
-    env.update(
-        {
-            "CUTI_HOME": str(PROJECT_ROOT),
-            "CUTI_DB_PATH": str(run_dir / "auctions.db"),
-            "CUTI_NOTIFIER_FILE_PATH": str(run_dir / "alerts.jsonl"),
-            "CUTI_REPORT_PATH": str(run_dir / "report.html"),
-            "CUTI_LOTS_SOURCE_URL": str(
-                PROJECT_ROOT / "data" / "sample" / "catawiki" / "page-1.html"
-            ),
-            "CUTI_DEALS_SOURCE_URL": str(
-                PROJECT_ROOT / "data" / "sample" / "deals" / "deals.json"
-            ),
-        }
-    )
-    base = [python, "-m", "cuti.cli", "--home", str(PROJECT_ROOT), "--today", "2026-08-01"]
-    for command in (
-        ["--json", "init-db"],
-        ["--json", "ingest"],
-        [
-            "--json",
-            "quote",
-            "--title",
-            "Omega Speedmaster Professional 311.30.42 full set",
-            "--cost-vnd",
-            "30000000",
-            "--condition",
-            "fullset",
-            "--form",
-            "round",
-        ],
-        ["--json", "watch"],
-        ["--json", "liquidity"],
-        ["--json", "report"],
-        ["--json", "status"],
-    ):
-        _run([*base, *command], env)
-    print(f"\nVERIFY OK — artifacts: {run_dir}")
-    return 0
+    with _Log(log_path) as log:
+        log.line("COMMAND=" + " ".join([python, "scripts/verify.py"]))
+        _environment_trace(log, os.environ)
+        code = 0
+        try:
+            _run([python, "-m", "unittest", "discover", "-s", "tests", "-v"], test_env, log)
+            env = dict(test_env)
+            env.update(
+                {
+                    "CUTI_HOME": str(PROJECT_ROOT),
+                    "CUTI_DB_PATH": str(run_dir / "auctions.db"),
+                    "CUTI_NOTIFIER_FILE_PATH": str(run_dir / "alerts.jsonl"),
+                    "CUTI_REPORT_PATH": str(run_dir / "report.html"),
+                    "CUTI_LOTS_SOURCE_URL": str(
+                        PROJECT_ROOT / "data" / "sample" / "catawiki" / "page-1.html"
+                    ),
+                    "CUTI_DEALS_SOURCE_URL": str(
+                        PROJECT_ROOT / "data" / "sample" / "deals" / "deals.json"
+                    ),
+                }
+            )
+            base = [python, "-m", "cuti.cli", "--home", str(PROJECT_ROOT), "--today", "2026-08-01"]
+            for command in (
+                ["--json", "init-db"],
+                ["--json", "ingest"],
+                [
+                    "--json",
+                    "quote",
+                    "--title",
+                    "Omega Speedmaster Professional 311.30.42 full set",
+                    "--cost-vnd",
+                    "30000000",
+                    "--condition",
+                    "fullset",
+                    "--form",
+                    "round",
+                ],
+                ["--json", "watch"],
+                ["--json", "liquidity"],
+                ["--json", "report"],
+                ["--json", "status"],
+            ):
+                _run([*base, *command], env, log)
+            marker = f"SRC_LOC_MAX={_source_loc_max()}"
+            print(marker, flush=True)
+            log.line(marker)
+            success = f"VERIFY OK — artifacts: {run_dir}"
+            print(f"\n{success}")
+            log.line(success)
+        except BaseException:
+            code = 1
+            traceback.print_exc()
+            traceback.print_exc(file=log.file)
+        log.line(f"EXIT={code}")
+        return code
 
 
 if __name__ == "__main__":

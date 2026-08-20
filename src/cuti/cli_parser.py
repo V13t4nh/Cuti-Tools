@@ -26,7 +26,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("init-db", help="create the SQLite schema")
-    sub.add_parser("ingest", help="crawl the auction source into SQLite")
+    ingest_cmd = sub.add_parser("ingest", help="crawl the auction source into SQLite")
+    ingest_cmd.add_argument(
+        "--max-lots", type=int, default=None, help="stop after writing at most N lots"
+    )
     sub.add_parser("watch-live", help="queue the lots that are open right now")
     sub.add_parser("settle", help="read the hammer price of queued lots that closed")
     sub.add_parser("check-urls", help="flag stored lots whose source page expired")

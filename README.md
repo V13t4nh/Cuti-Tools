@@ -4,10 +4,6 @@ Công cụ hỗ trợ quyết định arbitrage đồng hồ: thu thập auction
 đúng reference và tình trạng, tính net p25/median/p75, hiển thị đèn
 Xanh/Vàng/Đỏ, theo dõi deal và xếp hạng thanh khoản.
 
-Roadmap và ranh giới kiến trúc nằm tại [`mermaid.md`](mermaid.md). Toàn bộ
-roadmap đã chạy end-to-end bằng dữ liệu mẫu. Hai adapter lấy dữ liệu thật
-(Catawiki và Facebook/marketplace) được để riêng cho giai đoạn tích hợp nguồn.
-
 ## Chạy nhanh trên Windows
 
 ```powershell

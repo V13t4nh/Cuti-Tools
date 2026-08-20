@@ -328,7 +328,8 @@ def _run_pipeline(settings: Any, log_dir: Path) -> int:
     common = ["--home", str(PROJECT_ROOT), "--today", date.today().isoformat(), "--json"]
     commands = {
         "init-db": [*common, "init-db"],
-        "ingest": [*common, "ingest"],
+        "ingest": [*common, "ingest", "--max-lots", "50"],
+        "settle": [*common, "settle"],
         "evaluate": [*common, "evaluate", "--query", "Omega Seamaster Diver 300M", "--cost", "1000", "--currency", "eur", "--condition", "naked"],
         "liquidity": [*common, "liquidity"],
         "report": [*common, "report"],
@@ -362,6 +363,7 @@ def main() -> int:
 
             settings = load_settings(base_dir=PROJECT_ROOT)
             rules = load_rules(settings.rules_path)
+            fetch_code = 0
             with _Log(day_dir / "fetch-lots.log") as lot_log:
                 lot_log.line(
                     "COMMAND="
@@ -373,10 +375,11 @@ def main() -> int:
                 except BaseException:
                     traceback.print_exc(file=lot_log.file)
                     lot_log.line("EXIT=1")
-                    raise
+                    fetch_code = 1
                 else:
                     lot_log.line("EXIT=0")
-            code = _run_pipeline(settings, day_dir)
+            pipeline_code = _run_pipeline(settings, day_dir)
+            code = 1 if fetch_code or pipeline_code else 0
         except BaseException:
             traceback.print_exc()
             summary.line("LIVE_VERIFICATION_ERROR")

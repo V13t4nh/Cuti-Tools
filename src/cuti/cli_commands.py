@@ -46,7 +46,11 @@ def execute(
     if args.command == "init-db":
         emit({"db_path": str(settings.db_path), "status": "ready"}, args.json, [f"Database ready at {settings.db_path}"])
     elif args.command == "ingest":
-        report = operations["ingest_lots"](conn, rules, settings, now)
+        ingest = operations["ingest_lots"]
+        if args.max_lots is None:
+            report = ingest(conn, rules, settings, now)
+        else:
+            report = ingest(conn, rules, settings, now, max_lots=args.max_lots)
         total = count_rows(conn, "lots")
         emit(
             {"pages_fetched": report.pages_fetched, "lots_written": report.lots_written, "stopped_reason": report.stopped_reason, "lots_total": total},

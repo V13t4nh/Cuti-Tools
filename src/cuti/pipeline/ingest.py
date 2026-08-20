@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from ..config import Settings
-from ..errors import ScrapeError
+from ..errors import ConfigError, ScrapeError
 from ..fetch import fetch_text, resolve, to_url
 from ..models import Lot
 from ..normalize import Rules, classify
@@ -46,10 +46,20 @@ def _safe_next_url(root_url: str, current_url: str, next_href: str) -> str:
     return candidate
 
 
+def _validate_max_lots(max_lots: int | None) -> None:
+    if max_lots is not None and (isinstance(max_lots, bool) or not isinstance(max_lots, int) or max_lots <= 0):
+        raise ConfigError(f"max_lots must be a positive integer, got {max_lots!r}")
+
+
 def ingest_lots(
-    conn: sqlite3.Connection, rules: Rules, settings: Settings, now: datetime
+    conn: sqlite3.Connection,
+    rules: Rules,
+    settings: Settings,
+    now: datetime,
+    max_lots: int | None = None,
 ) -> IngestReport:
     """Preflight every source page, then atomically store the normalized crawl."""
+    _validate_max_lots(max_lots)
     root_url = to_url(settings.lots_source_url)
     url = root_url
     visited: set[str] = set()
@@ -67,6 +77,9 @@ def ingest_lots(
         )
         pages += 1
         for raw in page.lots:
+            if max_lots is not None and len(lots) >= max_lots:
+                reason = "lot limit reached"
+                break
             if raw.lot_id in seen_lot_ids:
                 raise ScrapeError(f"duplicate lot_id across source pages: {raw.lot_id}")
             seen_lot_ids.add(raw.lot_id)
@@ -90,6 +103,9 @@ def ingest_lots(
                     url=resolve(url, raw.url),
                 )
             )
+        if max_lots is not None and len(lots) >= max_lots:
+            reason = "lot limit reached"
+            break
         if page.next_href is None:
             break
         if pages >= settings.source_max_pages:
