@@ -24,7 +24,6 @@ from ..storage import (
 )
 from .details import build_lot_url, fetch_lot_page
 
-
 @dataclass(frozen=True, slots=True)
 class WatchLiveReport:
     queries: tuple[str, ...]
@@ -34,7 +33,6 @@ class WatchLiveReport:
     lots_refreshed: int
     windows_unknown: int
     requests_made: int
-
 
 @dataclass(frozen=True, slots=True)
 class SettleReport:
@@ -48,13 +46,11 @@ class SettleReport:
     queue_remaining: int
     requests_made: int
 
-
 @dataclass(frozen=True, slots=True)
 class SourceCheckReport:
     checked: int
     alive: int
     dead: int
-
 
 def _lot_page_fetcher(
     rows: list[LiveWatchRow], settings: Settings

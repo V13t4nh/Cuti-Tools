@@ -10,6 +10,7 @@ from typing import Any, Mapping
 from ..errors import NormalizationError
 from ..normalize import Rules, detect_brand, normalize_text, reference_tokens, tokenize
 from ..normalize_identity import extract_caliber, split_identity
+from .settlement_resolver_keys import model_key as _model_key
 
 _IDENTITY = ("brand", "caliber", "case_code")
 _FIELDS = (*_IDENTITY, "model", "ref_number", "movement", "case_material", "case_diameter_mm")
@@ -178,26 +179,6 @@ def _merge_sources(sources: list[tuple[int, dict[str, list[Any]]]]) -> tuple[dic
         if field in _IDENTITY and len({_canonical(value) for _, value in present}) > 1:
             review = 1
     return selected, review, blocked
-
-
-def _slug(title: str) -> str:
-    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", normalize_text(title))).strip("-")
-
-
-def _model_key(values: Mapping[str, Any], title: str) -> tuple[str, int]:
-    brand = values.get("brand")
-    prefix = normalize_text(str(brand)) if brand else ""
-    candidates = (
-        (1, ("caliber", "case_code")),
-        (2, ("case_code",)),
-        (3, ("ref_number",)),
-        (4, ("model", "case_diameter_mm")),
-    )
-    for tier, names in candidates:
-        if prefix and all(values.get(name) is not None for name in names):
-            parts = [prefix, *(normalize_text(str(values[name])) for name in names)]
-            return "|".join(parts), tier
-    return "|".join(part for part in (prefix, _slug(title)) if part), 5
 
 
 def _identity(
