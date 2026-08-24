@@ -111,6 +111,8 @@ def watch_live(
                 break
             for ref in page.lots:
                 refs.setdefault(ref.lot_id, ref)
+            if page.total and len(refs) >= page.total:
+                break
     windows: dict[str, date] = {}
     for batch in catawiki_api.chunks(list(refs), settings.catawiki_batch_size):
         for lot_id, state in client.live_states(batch).items():
