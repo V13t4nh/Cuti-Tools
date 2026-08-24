@@ -11,11 +11,11 @@
   },
   "verification": {
     "command": "make verify",
-    "testReady": true,
-    "sourceOnlyTestReady": true,
+    "testReady": false,
+    "sourceOnlyTestReady": false,
     "dependencyBundleRequired": false,
-    "status": "green",
-    "blockingReason": null,
+    "status": "blocked",
+    "blockingReason": "Current offline verify exits 1 at LIQ_SERIES_SAMPLE because the real sample has thin quarterly windows; live Catawiki verification is blocked by HTTP 403. The supplemental logic fixture passes its focused business-logic validation but does not replace the real-source or HTML-input contract.",
     "network": "disabled",
     "docker": "unsupported",
     "database": "unsupported"

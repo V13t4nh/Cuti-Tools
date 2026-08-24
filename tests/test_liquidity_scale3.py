@@ -6,7 +6,7 @@ import json
 from contextlib import redirect_stdout
 
 from cuti.cli import main
-from cuti.liquidity import liquidity_status, liquidity_windows
+from cuti.liquidity import liquidity_series, liquidity_status, liquidity_windows
 from cuti.models import WatchForm
 
 from support import ProjectTestCase, make_lot
@@ -41,6 +41,34 @@ class LiquidityTimelineTests(ProjectTestCase):
         self.assertEqual(windows[-1].sell_through_rate, 0.4)
         self.assertEqual(windows[-1].heart_to_hammer_rate, 0.4)
         self.assertEqual(windows[-1].median_days_to_close, 10.0)
+
+    def test_series_drops_thin_quarters_and_keeps_periods(self) -> None:
+        settings = self.make_settings(CUTI_LIQUIDITY_MIN_LOTS="1")
+        periods = (
+            date(2024, 9, 15), date(2024, 12, 15), date(2025, 3, 15),
+            date(2025, 6, 15), date(2025, 9, 15), date(2025, 12, 15),
+            date(2026, 3, 15), date(2026, 6, 15),
+        )
+        lots = [make_lot(f"quarter-{index}", ended_at=ended_at) for index, ended_at in enumerate(periods)]
+        series = liquidity_series(lots, settings, date(2026, 8, 1))
+        self.assertIsNotNone(series)
+        self.assertEqual(len(series), 8)
+
+        sparse = [lots[0], lots[-1]]
+        sparse_series = liquidity_series(sparse, settings, date(2026, 8, 1))
+        self.assertEqual(len(sparse_series or ()), 2)
+        self.assertEqual(sparse_series[0].start, date(2024, 7, 1))
+        self.assertEqual(sparse_series[-1].start, date(2026, 4, 1))
+
+    def test_series_is_none_when_only_one_quarter_has_enough_lots(self) -> None:
+        settings = self.make_settings(CUTI_LIQUIDITY_MIN_LOTS="1")
+        lots = [make_lot("only-quarter", ended_at=date(2026, 6, 15))]
+        self.assertIsNone(liquidity_series(lots, settings, date(2026, 8, 1)))
+
+    def test_series_is_none_when_no_quarter_has_enough_lots(self) -> None:
+        settings = self.make_settings(CUTI_LIQUIDITY_MIN_LOTS="2")
+        lots = [make_lot("one-lot", ended_at=date(2026, 6, 15))]
+        self.assertIsNone(liquidity_series(lots, settings, date(2026, 8, 1)))
 
     def test_missing_window_is_none_and_status_requires_two_windows(self) -> None:
         settings = self.make_settings(CUTI_COMPARABLE_WINDOW_DAYS="365")

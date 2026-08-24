@@ -1,0 +1,74 @@
+[
+  {
+    "source": "fb-group-dongho",
+    "title": "Citizen NJ0153-82X with box",
+    "ask_vnd": 27000000,
+    "url": "https://example.invalid/deals/nj0153-green",
+    "seen_at": "2026-08-20",
+    "condition": "box",
+    "form": "unknown"
+  },
+  {
+    "source": "fb-group-dongho",
+    "title": "Citizen NJ0153-82X with box",
+    "ask_vnd": 200000000,
+    "url": "https://example.invalid/deals/nj0153-red",
+    "seen_at": "2026-08-20",
+    "condition": "box",
+    "form": "unknown"
+  },
+  {
+    "source": "cho-dong-ho-cu",
+    "title": "Zenith El Primero 9999 watch only",
+    "ask_vnd": 50000000,
+    "url": "https://example.invalid/deals/zenith-thin",
+    "seen_at": "2026-08-20",
+    "condition": "naked",
+    "form": "unknown"
+  },
+  {
+    "source": "fb-group-dongho",
+    "title": "Seiko SNK809 watch only",
+    "ask_vnd": 15000000,
+    "url": "https://example.invalid/deals/snk809-dup",
+    "seen_at": "2026-08-20",
+    "condition": "naked",
+    "form": "unknown"
+  },
+  {
+    "source": "fb-group-dongho",
+    "title": "Seiko SNK809 watch only",
+    "ask_vnd": 15000000,
+    "url": "https://example.invalid/deals/snk809-dup",
+    "seen_at": "2026-08-21",
+    "condition": "naked",
+    "form": "unknown"
+  },
+  {
+    "source": "cho-dong-ho-cu",
+    "title": "Omega Seamaster 166.010 watch only",
+    "ask_vnd": 40000000,
+    "url": "https://example.invalid/deals/seamaster-old",
+    "seen_at": "2023-01-01",
+    "condition": "naked",
+    "form": "unknown"
+  },
+  {
+    "source": "fb-group-dongho",
+    "title": "Cartier Tank Solo WSTA0030 with papers",
+    "ask_vnd": 80000000,
+    "url": "https://example.invalid/deals/tank-old",
+    "seen_at": "2022-06-01",
+    "condition": "papers",
+    "form": "unknown"
+  },
+  {
+    "source": "cho-dong-ho-cu",
+    "title": "Seiko SNK809 7S26-02J0 watch only",
+    "ask_vnd": 12000000,
+    "url": "https://example.invalid/deals/snk809-live",
+    "seen_at": "2026-08-24",
+    "condition": "naked",
+    "form": "unknown"
+  }
+]

@@ -1,0 +1,331 @@
+{
+  "collected_at": "2026-08-24T12:00:00+07:00",
+  "collector": "notion-ai-web-loadPage",
+  "record_count": 29,
+  "unique_lot_ids": 29,
+  "source_urls": [
+    "https://www.catawiki.com/en/l/103466812-omega-seamaster-30-dial-verde-oliva-calibre-286-no-reserve-price-ref-135003-62-sc-men-1961",
+    "https://www.catawiki.com/en/l/103687292-seiko-5-no-reserve-price-snke03kc-men-2020",
+    "https://www.catawiki.com/en/l/104031334-tag-heuer-carrera-wv1415-women-2010-2020",
+    "https://www.catawiki.com/en/l/104076481-omega-seamaster-no-reserve-price-14390-4sc-men-1959",
+    "https://www.catawiki.com/en/l/104408203-seiko-prospex-no-reserve-price-sut411p1-box-paper-v131-0am0-asia-exclusive-unisex-2020",
+    "https://www.catawiki.com/en/l/104565743-seiko-seiko-5-no-reserve-price-srpe79k1-box-paper-4r36-09a0-men-2010-2020",
+    "https://www.catawiki.com/en/l/104576579-seiko-presage-no-reserve-price-sarx025-6r15-02y0-box-and-paper-men-2010-2020",
+    "https://www.catawiki.com/en/l/104586292-omega-seamaster-166-010-men-1960-1969",
+    "https://www.catawiki.com/en/l/104619458-omega-seamaster-de-ville-166-020-men-1962",
+    "https://www.catawiki.com/en/l/104632384-citizen-tsuyosa-automatic-burgundy-nj0153-82x-2020",
+    "https://www.catawiki.com/en/l/104698752-citizen-tsuyosa-automatic-burgundy-no-reserve-price-nj0153-82x-men-2020",
+    "https://www.catawiki.com/en/l/104698761-citizen-tsuyosa-automatic-burgundy-no-reserve-price-nj0153-82x-men-2020",
+    "https://www.catawiki.com/en/l/104716737-rolex-datejust-men-s-watch-antique-16013-r-men-2000-2010",
+    "https://www.catawiki.com/en/l/104720188-seiko-seiko-5-automatic-day-date-no-reserve-price-snk809-military-at-men-2000-2010",
+    "https://www.catawiki.com/en/l/104816285-citizen-no-reserve-price-nj0153-82x-men-2020",
+    "https://www.catawiki.com/en/l/104858323-seiko-seiko-5-snk809-no-reserve-price-7s26-3060-men-1991",
+    "https://www.catawiki.com/en/l/104975522-omega-seamaster-no-reserve-price-seamaster-cal-546-ref-166-010-sp-men-1960-1969",
+    "https://www.catawiki.com/en/l/105002783-seiko-snk809-no-reserve-price-7s26-02j0-men-2000-2010",
+    "https://www.catawiki.com/en/l/105245188-seiko-5-no-reserve-price-snke03kc-men-2020",
+    "https://www.catawiki.com/en/l/105279974-omega-seamaster-166010-men-1970",
+    "https://www.catawiki.com/en/l/105466515-cartier-tank-solo-wsta0030-unisex-2010-2020",
+    "https://www.catawiki.com/en/l/105513826-art-deco-mechanical-pocket-watch-1900-1949",
+    "https://www.catawiki.com/en/l/106012677-rolex-datejust-no-reserve-price-16014-men-1980-1989",
+    "https://www.catawiki.com/en/l/106040070-seiko-5-automatic-japan-made-21-jewels-day-date-men-watch",
+    "https://www.catawiki.com/en/l/106050557-omega-seamaster-no-reserve-price-166-037-sp-men-1969",
+    "https://www.catawiki.com/en/l/106063210-omega-seamaster-14770-men-1961",
+    "https://www.catawiki.com/en/l/106116952-omega-speedmaster-no-reserve-price-351330-full-set-men-2000-2010",
+    "https://www.catawiki.com/en/l/106198133-omega-seamaster-men-1970-1979",
+    "https://www.catawiki.com/en/l/106254504-seiko-snk809-no-reserve-price-7s26-02j0-men-2000-2010"
+  ],
+  "status_distribution": {
+    "sold": 25,
+    "unsold": 2,
+    "live": 2
+  },
+  "condition_distribution": {
+    "(empty)": 13,
+    "box": 4,
+    "naked": 4,
+    "fullset": 7,
+    "papers": 1
+  },
+  "quarter_distribution": {
+    "note": "ended_at is empty on every row. Pages only showed relative text (e.g. '9 weeks ago') or a countdown. publishedDate from the crawler is listing metadata, not hammer close time. Quarters cannot be certified from this scrape."
+  },
+  "missing_fields": {
+    "bids_count": [
+      "104586292",
+      "106063210",
+      "106254504"
+    ],
+    "brand": [
+      "105513826"
+    ],
+    "caliber": [
+      "105513826",
+      "104816285",
+      "104858323",
+      "104720188",
+      "104586292",
+      "104619458",
+      "104716737",
+      "105466515",
+      "103687292",
+      "105245188",
+      "106063210",
+      "106012677",
+      "106254504",
+      "104031334",
+      "106198133"
+    ],
+    "case_diameter_mm": [
+      "104858323",
+      "105002783",
+      "104586292",
+      "105466515"
+    ],
+    "case_material": [
+      "105513826",
+      "104858323",
+      "104720188",
+      "105279974",
+      "104975522",
+      "104076481"
+    ],
+    "condition_tag": [
+      "103466812",
+      "105513826",
+      "104858323",
+      "105002783",
+      "104720188",
+      "105279974",
+      "104975522",
+      "104586292",
+      "104716737",
+      "106063210",
+      "106050557",
+      "106012677",
+      "104076481"
+    ],
+    "dial_color": [
+      "105513826",
+      "104858323",
+      "104720188",
+      "104975522",
+      "106012677",
+      "104076481"
+    ],
+    "ended_at": [
+      "103466812",
+      "105513826",
+      "104698752",
+      "104816285",
+      "104698761",
+      "104632384",
+      "104858323",
+      "105002783",
+      "104720188",
+      "106040070",
+      "105279974",
+      "104975522",
+      "104586292",
+      "104619458",
+      "106116952",
+      "104408203",
+      "104716737",
+      "105466515",
+      "103687292",
+      "105245188",
+      "106063210",
+      "106050557",
+      "106012677",
+      "106254504",
+      "104576579",
+      "104565743",
+      "104031334",
+      "104076481",
+      "106198133"
+    ],
+    "form": [
+      "103466812",
+      "105513826",
+      "104698752",
+      "104816285",
+      "104698761",
+      "104632384",
+      "104858323",
+      "105002783",
+      "104720188",
+      "106040070",
+      "105279974",
+      "104975522",
+      "104586292",
+      "104619458",
+      "106116952",
+      "104408203",
+      "104716737",
+      "105466515",
+      "103687292",
+      "105245188",
+      "106063210",
+      "106050557",
+      "106012677",
+      "106254504",
+      "104576579",
+      "104565743",
+      "104031334",
+      "104076481",
+      "106198133"
+    ],
+    "hammer_eur": [
+      "104586292",
+      "106063210",
+      "106254504",
+      "106198133"
+    ],
+    "hearts": [
+      "103466812",
+      "105513826",
+      "104698752",
+      "104816285",
+      "104698761",
+      "104632384",
+      "104858323",
+      "105002783",
+      "104720188",
+      "106040070",
+      "105279974",
+      "104975522",
+      "104586292",
+      "104619458",
+      "106116952",
+      "104408203",
+      "104716737",
+      "105466515",
+      "103687292",
+      "105245188",
+      "106063210",
+      "106050557",
+      "106012677",
+      "106254504",
+      "104576579",
+      "104565743",
+      "104031334",
+      "104076481",
+      "106198133"
+    ],
+    "model": [
+      "105513826",
+      "104816285"
+    ],
+    "movement": [
+      "105279974",
+      "104975522",
+      "105466515"
+    ],
+    "opened_at": [
+      "103466812",
+      "105513826",
+      "104698752",
+      "104816285",
+      "104698761",
+      "104632384",
+      "104858323",
+      "105002783",
+      "104720188",
+      "106040070",
+      "105279974",
+      "104975522",
+      "104586292",
+      "104619458",
+      "106116952",
+      "104408203",
+      "104716737",
+      "105466515",
+      "103687292",
+      "105245188",
+      "106063210",
+      "106050557",
+      "106012677",
+      "106254504",
+      "104576579",
+      "104565743",
+      "104031334",
+      "104076481",
+      "106198133"
+    ],
+    "ref_number": [
+      "105513826",
+      "106040070",
+      "106198133"
+    ]
+  },
+  "hearts": {
+    "present_on_any_page": false,
+    "note": "hearts never appeared in loaded HTML. Column left empty. heart_to_hammer_rate cannot be computed from this sample."
+  },
+  "rules_applied": [
+    "lot_id from page No., not from URL slug when they differ",
+    "status sold only if page said Sold AND Final bid present",
+    "live lots have empty hammer_eur",
+    "unsold = Bidding closed / No longer available without Final bid",
+    "condition_tag only when page stated box/papers/full set/no box or papers",
+    "empty cell = field not on page; not inferred"
+  ],
+  "requirements_not_met": [
+    "Need >=100 unique lots; this file has 29",
+    "Need >=5 sold comparables same brand/model/ref/condition; largest group is Citizen NJ0153-82X box sold = 4",
+    "Need >=3 quarters with >=5 lots each; ended_at dates not on pages",
+    "Need more live lots; only 2 live pages loaded (106254504, 106198133)"
+  ],
+  "comparable_groups": {
+    "Citizen/NJ0153-82X/box/sold": [
+      "104698752",
+      "104816285",
+      "104698761",
+      "104632384"
+    ],
+    "Seiko/SNKE03KC/fullset/sold": [
+      "103687292",
+      "105245188"
+    ]
+  },
+  "failed_or_redirected_urls": [
+    "https://www.catawiki.com/en/l/103980150-citizen-tsuyosa-automatic-burgundy-no-reserve-price-nj0153-82x-men-2020",
+    "https://www.catawiki.com/en/l/102763721-seiko-seiko-5-snk809-utan-reservationspris-7s26-3060-man-2000-2010",
+    "https://www.catawiki.com/en/l/100113870-gucci-dive-no-reserve-price-ya136203-men-2020",
+    "https://www.catawiki.com/en/l/103688901-rolex-datejust-ref-69173g-women-1990-1999",
+    "https://www.catawiki.com/en/l/102549127-seiko-5-no-reserve-price-snke03kc-men-2020",
+    "https://www.catawiki.com/en/l/104019499-seiko-5-no-reserve-price-snke03kc-men-2020",
+    "https://www.catawiki.com/en/l/103158823-iwc-pilot-iw3740-men-1990-1999",
+    "https://www.catawiki.com/en/l/101846510-tudor-black-bay-brand-new-79000n-men-2025",
+    "https://www.catawiki.com/en/l/103179221-citizen-citizen-tsuno-bull-head-38-mm-no-reserve-price-an370089z-men-2026",
+    "https://www.catawiki.com/en/l/103813011-omega-seamaster-unisex-1960-1969",
+    "https://www.catawiki.com/en/l/103280350-omega-seamaster-166-010-men-1960-1969"
+  ],
+  "limits": {
+    "sandbox_curl": "Could not resolve host www.catawiki.com",
+    "listing_pages": "Auction/category pages returned titles only or 504",
+    "lot_pages": "Individual /en/l/ pages often loaded; specs table only on some live pages; hearts never present"
+  },
+  "deals_json": "constructed test inputs, JSON array, fields: source, title, ask_vnd, url, seen_at, condition, form. form=unknown because source did not state case shape.",
+  "lot_id_rule": "lot_id is the numeric segment of url path",
+  "lot_id_url_fixes": [
+    {
+      "page_no_observed": "105498186",
+      "lot_id": "105279974"
+    },
+    {
+      "page_no_observed": "104514845",
+      "lot_id": "103687292"
+    }
+  ],
+  "still_not_ingestible_as_catawiki_listing": "CSV is not lot-card HTML. hearts/opened_at/ended_at/form remain empty. parse_listing will still raise no lot-card elements.",
+  "supplemental_logic_fixture": {
+    "provenance": "synthetic_test_only",
+    "auction_file": "logic_coverage.csv",
+    "deal_file": "logic_coverage_deals.json",
+    "manifest_file": "logic_coverage_manifest.json",
+    "auction_records": 20,
+    "comparable_pool": "15 Omega 210.30.42 naked round attempts across 3 quarters; 12 sold and 3 unsold",
+    "coverage": "all four conditions, all six WatchForm values, hearts, bids_count, opened_at, ended_at, sold/unsold, pricing paths and deal deduplication",
+    "not_real_source_data": true
+  }
+}

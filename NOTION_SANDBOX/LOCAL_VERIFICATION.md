@@ -1,20 +1,22 @@
 # Local verification
 
 - Repository: `cuti-tools`
-- Source baseline: `6318564f27ae89e4d3bc5aa35a338c4c9a1bc781`.
-- Result: **250 passed, 0 failed, 0 skipped, exit code 0**.
+- Source baseline: `8bd58dcb45f0ba546d81573f7127299ae1ca857a`.
 - Required acceptance command: `make verify`
-- Network: not required; verification is intended to run offline
-- Dependencies: Python 3.11+ standard library for the core path; no package
-  installation is part of acceptance
+- Focused unit suite: **316 passed, 0 failed, 0 skipped, exit code 0**.
+- Unit-suite raw log: `NOTION_SANDBOX/evidence/unit-2026-08-24.txt`.
+- Latest recorded result: **316 passed, 0 failed, 0 skipped, exit code 1**.
+- Failure: `LIQ_SERIES_SAMPLE` is empty because the real sample's quarterly
+  groups are below `CUTI_LIQUIDITY_MIN_LOTS=5`.
+- Live verification: blocked by Catawiki HTTP 403; no source fixture was
+  fabricated.
+- Focused supplemental fixture result: **exit code 0**. It validates the
+  normalized `synthetic_test_only` fixture across pricing, liquidity, deal
+  parsing and verdict paths. Raw log:
+  `NOTION_SANDBOX/evidence/logic_coverage_validation.txt`.
+- Network: not required for the focused fixture validation.
+- Dependencies: Python 3.11+ standard library for the core path.
 
-The Windows host used for this handoff did not provide GNU Make. The exact
-verification body used by the Make target passed locally with:
-
-```text
-PYTHONPATH=src;tests .\.venv\Scripts\python.exe scripts/verify.py
-```
-
-Run the literal `make verify` command in a clean environment that provides
-GNU Make. If sample data is absent, the target generates it deterministically
-from the fixed seed before verification.
+The supplemental fixture is not market data and must not be mixed into source
+truth metrics. The real Catawiki snapshot remains separate and is still not a
+drop-in input for `parse_listing` because it is CSV rather than `lot-card` HTML.

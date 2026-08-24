@@ -1,0 +1,47 @@
+[
+  {
+    "source": "synthetic_test",
+    "title": "Omega Seamaster Diver 300M 210.30.42 watch only",
+    "ask_vnd": 45000000,
+    "url": "https://fixture.invalid/deals/omega-green",
+    "seen_at": "2026-08-01",
+    "condition": "naked",
+    "form": "round"
+  },
+  {
+    "source": "synthetic_test",
+    "title": "Omega Seamaster Diver 300M 210.30.42 watch only",
+    "ask_vnd": 90000000,
+    "url": "https://fixture.invalid/deals/omega-red",
+    "seen_at": "2026-08-01",
+    "condition": "naked",
+    "form": "round"
+  },
+  {
+    "source": "synthetic_test",
+    "title": "Unknown Zenith El Primero 9999 watch only",
+    "ask_vnd": 50000000,
+    "url": "https://fixture.invalid/deals/omega-thin",
+    "seen_at": "2026-08-01",
+    "condition": "naked",
+    "form": "unknown"
+  },
+  {
+    "source": "synthetic_test",
+    "title": "Omega Seamaster Diver 300M 210.30.42 watch only",
+    "ask_vnd": 60000000,
+    "url": "https://fixture.invalid/deals/omega-green",
+    "seen_at": "2026-08-02",
+    "condition": "naked",
+    "form": "round"
+  },
+  {
+    "source": "synthetic_test",
+    "title": "Omega Seamaster Diver 300M 210.30.42 watch only",
+    "ask_vnd": 40000000,
+    "url": "https://fixture.invalid/deals/omega-old",
+    "seen_at": "2023-01-01",
+    "condition": "naked",
+    "form": "round"
+  }
+]

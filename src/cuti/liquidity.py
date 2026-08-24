@@ -5,7 +5,6 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import cast
 
 from .config import Settings
 from .models import Lot, WatchForm
@@ -73,10 +72,6 @@ def _metrics(lots: list[Lot], settings: Settings) -> tuple[int, float, float | N
     return len(sold_lots), sell_through, median_days, speed, aggregate_heart_rate, index
 
 
-def _quarter_start(day: date) -> date:
-    return date(day.year, ((day.month - 1) // 3) * 3 + 1, 1)
-
-
 def liquidity_windows(
     lots: list[Lot], settings: Settings, today: date
 ) -> tuple[LiquidityWindow | None, ...]:
@@ -109,31 +104,21 @@ def liquidity_status(
 def liquidity_series(
     lots: list[Lot], settings: Settings, today: date
 ) -> tuple[LiquidityWindow, ...] | None:
-    """Return a renderable series, or ``None`` when any window lacks data."""
+    """Return at least two populated windows for rendering, if available."""
     windows = liquidity_windows(lots, settings, today)
-    if any(window is None for window in windows):
+    series = tuple(window for window in windows if window is not None)
+    if len(series) < 2:
         return None
-    return cast(tuple[LiquidityWindow, ...], windows)
+    return series
 
 
-def _previous_completed_quarters(today: date, count: int = 3) -> tuple[tuple[date, date], ...]:
-    end = _quarter_start(today) - timedelta(days=1)
-    periods: list[tuple[date, date]] = []
-    for _ in range(count):
-        start = _quarter_start(end)
-        periods.append((start, end))
-        end = start - timedelta(days=1)
-    periods.reverse()
-    return tuple(periods)
-
-
-def _quarterly_trend(lots: list[Lot], settings: Settings, today: date) -> tuple[float | None, bool]:
-    indexes: list[float] = []
-    for start, end in _previous_completed_quarters(today):
-        quarter_lots = [lot for lot in lots if start <= lot.ended_at <= end]
-        if len(quarter_lots) < settings.liquidity_min_lots:
-            return None, False
-        indexes.append(_metrics(quarter_lots, settings)[-1])
+def _quarterly_trend(
+    windows: tuple[LiquidityWindow | None, ...], settings: Settings
+) -> tuple[float | None, bool]:
+    recent = windows[-3:]
+    if len(recent) < 3 or any(window is None for window in recent):
+        return None, False
+    indexes = [window.index for window in recent]
     if indexes[0] <= 0 or indexes[1] <= 0:
         return None, False
     changes = (indexes[1] / indexes[0] - 1.0, indexes[2] / indexes[1] - 1.0)
@@ -149,8 +134,9 @@ def _score_group(
     today: date,
 ) -> BrandLiquidity:
     sold, sell_through, median_days, speed, heart_to_hammer, index = _metrics(lots, settings)
-    latest_change, stop_buying = _quarterly_trend(lots, settings, today)
-    status = liquidity_status(liquidity_windows(lots, settings, today), settings)
+    windows = liquidity_windows(lots, settings, today)
+    latest_change, stop_buying = _quarterly_trend(windows, settings)
+    status = liquidity_status(windows, settings)
     return BrandLiquidity(
         brand=brand,
         form=form,

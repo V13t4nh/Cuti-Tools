@@ -1,11 +1,18 @@
 {
-  "commit": "061e0bd50a5a666173d58cb480d901668bd044a8",
-  "testReady": true,
-  "baselineStatus": "green",
-  "blockingReason": "tier 2 incomplete: no browser HTML fixtures; prior live fetch HTTP 403 for lot 106019970 (var/live/2026-08-20/fetch-lots.log)",
-  "testCommand": "make verify",
-  "testsRun": 309,
-  "testsPassed": 309,
+  "commit": "8bd58dcb45f0ba546d81573f7127299ae1ca857a",
+  "testReady": false,
+  "baselineStatus": "blocked",
+  "blockingReason": "Corrected acceptance query returns 8 comparables, but their quarter counts are 2,2,1,2,1 below liquidity_min_lots=5, so LIQ_SERIES_SAMPLE has zero windows. Live fixture fetch is also blocked by Catawiki HTTP 403. See notion.md section 6.",
+  "testCommand": "make SHELL=\"C:/Program Files/Git/bin/sh.exe\" verify PYTHON=.venv/Scripts/python.exe",
+  "testsRun": 316,
+  "testsPassed": 316,
   "testsFailed": 0,
-  "exitCode": 0
+  "exitCode": 1,
+  "logicFixture": {
+    "path": "tests/fixtures/logic_coverage",
+    "validationLog": "NOTION_SANDBOX/evidence/logic_coverage_validation.txt",
+    "validationExitCode": 0,
+    "provenance": "synthetic_test_only"
+  },
+  "worktreeDirty": true
 }

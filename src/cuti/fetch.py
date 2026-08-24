@@ -19,7 +19,18 @@ from typing import Any
 from .errors import FetchError
 
 SUPPORTED_SCHEMES = ("http", "https", "file")
-USER_AGENT = "cuti-tools/1.0 (+https://github.com/V13t4nh/Cuti-Tools)"
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+)
+DEFAULT_HEADERS: dict[str, str] = {
+    "User-Agent": USER_AGENT,
+    "Accept": "application/json, text/plain, text/html, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Dest": "empty",
+}
 DEFAULT_MAX_BYTES = 5_000_000
 
 def _safe_url(url: str) -> str:
@@ -51,7 +62,7 @@ def fetch_text(
 ) -> str:
     """Fetch a document and decode it as UTF-8."""
     url = to_url(location)
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    request = urllib.request.Request(url, headers=DEFAULT_HEADERS)
     try:
         with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             status = getattr(response, "status", None)
@@ -86,7 +97,7 @@ def probe_url(url: str, timeout_seconds: float) -> tuple[int, str]:
     tell "still the same lot page" from "redirected to a category page". A 4xx
     answer is a result, not an error; only transport failures raise.
     """
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    request = urllib.request.Request(url, headers=DEFAULT_HEADERS)
     try:
         with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             status = int(getattr(response, "status", 0) or 0)
@@ -107,10 +118,11 @@ def post_json(
 ) -> Any:
     """POST a JSON body and decode the JSON response."""
     data = json.dumps(payload).encode("utf-8")
+    headers = {**DEFAULT_HEADERS, "Content-Type": "application/json"}
     request = urllib.request.Request(
         url,
         data=data,
-        headers={"Content-Type": "application/json", "User-Agent": USER_AGENT},
+        headers=headers,
         method="POST",
     )
     try:

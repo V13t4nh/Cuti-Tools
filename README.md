@@ -16,6 +16,8 @@ python -m venv .venv
 `verify.py` chạy toàn bộ test và luồng thật
 `init-db → ingest → quote → watch → liquidity → report` trên một thư mục riêng
 trong `var/verify/`. Script không xóa database hay artifact có sẵn.
+Lượt verify hiện chạy 322 test; marker `LOGIC_COVERAGE_VERDICTS` được đo từ các
+verdict thực nhận khi evaluate fixture logic coverage và sắp xếp xác định.
 
 `CUTI_MATCH_THRESHOLD` dùng thang phần trăm 0–100 (mặc định `85`).
 
@@ -171,6 +173,45 @@ cuti fetch-lot-details --lot-id 123456
 Kết quả luôn là JSON gồm các trường Details đã parse được. Để lấy Details trong
 `settle` hoặc `ingest-lot`, bật `CUTI_DETAILS_ENABLED=true`; mặc định tắt để các
 lệnh verify và chạy offline không gọi mạng.
+
+## Bật dữ liệu thật
+
+Đặt các biến môi trường nguồn thật (không dùng giá trị mẫu), rồi chạy đúng thứ tự:
+
+```powershell
+$env:CUTI_LOTS_SOURCE_URL = "https://..."
+$env:CUTI_CATAWIKI_API_BASE = "https://www.catawiki.com"
+$env:CUTI_DETAILS_ENABLED = "true"
+cuti init-db
+cuti ingest --max-lots 50
+cuti settle
+cuti evaluate --query "Omega Seamaster Diver 300M" --cost 1000 --currency eur --condition naked
+cuti liquidity
+cuti report
+cuti status
+```
+
+Các biến nguồn cần set là `CUTI_LOTS_SOURCE_URL`, `CUTI_CATAWIKI_API_BASE`,
+`CUTI_DETAILS_ENABLED=true`; các biến timeout, giới hạn trang và nhịp gọi giữ theo
+`.env.example`. Lưu HTML thật từ trình duyệt vào `tests/fixtures/live/<lot_id>.html`
+trước khi chạy verify offline; không ghi đè fixture đã có. Nếu bật Telegram, set
+`CUTI_NOTIFIER=telegram`, `CUTI_TELEGRAM_BOT_TOKEN` và `CUTI_TELEGRAM_CHAT_ID`.
+
+`fetch-lot-details` gọi trực tiếp nguồn lot nên chỉ chạy smoke test có kiểm soát,
+không gọi trong vòng lặp. `ingest_one_lot` tạo fetcher mới cho từng lot, vì vậy
+giới hạn tốc độ chỉ có hiệu lực trong một phiên `settle`.
+
+Hai ngưỡng đủ mẫu vẫn tách biệt: `CUTI_MIN_COMPARABLES` dùng cho verdict theo số
+lot đã bán, còn các chỉ số thanh khoản cần tổng số lot trong pool đạt ngưỡng đã nêu
+ở trên. Chuỗi thanh khoản bỏ các cửa sổ mỏng; chỉ hiện khi còn ít nhất 2 cửa sổ đủ
+mẫu.
+
+Dữ liệu fixture tổng hợp chỉ dùng để kiểm thử; synthetic không bao giờ là nguồn cho
+biên lợi nhuận (margin) hoặc pool comparable của dữ liệu thật.
+Tầng storage dùng hằng số module `SYNTHETIC_SOURCE = "synthetic_test"`; cả bốn
+đường đọc pool (`fetch_lots_for_model`, `fetch_lots_for_liquidity`,
+`fetch_sold_lots_since`, `search_sold_lots`) đều bind hằng số này và loại lot
+synthetic khỏi pool.
 
 Form Streamlit không mặc định tình trạng hoặc form vỏ: buyer phải xác nhận rõ
 cả hai trước khi hệ thống tạo quote. Audit cũ không có snapshot được đánh dấu

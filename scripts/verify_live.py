@@ -12,6 +12,7 @@ import io
 import json
 import os
 import platform
+import re
 import sys
 import time
 import traceback
@@ -21,6 +22,11 @@ from dataclasses import asdict
 from datetime import date
 from pathlib import Path
 from typing import Any, Iterator, Mapping
+
+if __package__:
+    from .verify import ACCEPTANCE_QUERY
+else:
+    from verify import ACCEPTANCE_QUERY
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 LIVE_LOTS = ("106019970", "105924279", "105418344", "105809071")
@@ -179,14 +185,14 @@ def _traced_urlopen(log: _Log):
 
 def _fetch_lot(url: str, *, timeout: float, max_bytes: int, retries: int, delay: float, log: _Log) -> bytes:
     """Fetch one lot with at most two retries for timeout/429/5xx."""
-    from cuti.fetch import USER_AGENT
+    from cuti.fetch import DEFAULT_HEADERS
 
     attempts = min(max(0, retries), 2) + 1
     for attempt in range(attempts):
         if attempt:
             time.sleep(max(1.0, delay) * (2 ** (attempt - 1)))
         started = time.perf_counter()
-        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        request = urllib.request.Request(url, headers=DEFAULT_HEADERS)
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 status = int(getattr(response, "status", 0) or 0)
@@ -239,19 +245,48 @@ def _fetch_lot(url: str, *, timeout: float, max_bytes: int, retries: int, delay:
     raise LiveVerificationError(f"{url}: retries exhausted")
 
 
+def _compact_fixture(payload: bytes) -> bytes:
+    if len(payload) <= FIXTURE_LIMIT:
+        return payload
+    text = payload.decode("utf-8", errors="replace")
+    match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', text, re.DOTALL)
+    if match:
+        try:
+            data = json.loads(match.group(1))
+            props = data.get("props", {})
+            page_props = props.get("pageProps", {})
+            compacted_props = {
+                "props": {
+                    "pageProps": {
+                        "lotDetailsData": page_props.get("lotDetailsData", {}),
+                        "locale": page_props.get("locale", "en"),
+                    }
+                }
+            }
+            new_script = f'<script id="__NEXT_DATA__" type="application/json">{json.dumps(compacted_props, ensure_ascii=False)}</script>'
+            text = text[:match.start()] + new_script + text[match.end():]
+        except Exception:
+            pass
+    encoded = text.encode("utf-8")
+    return encoded[:FIXTURE_LIMIT] if len(encoded) > FIXTURE_LIMIT else encoded
+
+
 def _save_fixture(lot_id: str, payload: bytes, log: _Log) -> Path:
     fixture_dir = PROJECT_ROOT / "tests" / "fixtures" / "live"
     fixture_dir.mkdir(parents=True, exist_ok=True)
     destination = fixture_dir / f"{lot_id}.html"
-    if len(payload) > FIXTURE_LIMIT:
-        destination.write_bytes(payload[:FIXTURE_LIMIT])
+    if destination.is_file():
+        log.line(f"FIXTURE_KEPT lot={lot_id} reason=existing path={destination}")
+        return destination
+    compacted = _compact_fixture(payload)
+    destination.write_bytes(compacted)
+    if len(payload) > len(compacted):
         log.line(
-            f"FIXTURE lot={lot_id} path={destination} bytes={FIXTURE_LIMIT} "
+            f"FIXTURE lot={lot_id} path={destination} bytes={len(compacted)} "
             f"TRUNCATED_FROM={len(payload)} tail_discarded=true"
         )
     else:
-        destination.write_bytes(payload)
-        log.line(f"FIXTURE lot={lot_id} path={destination} bytes={len(payload)}")
+        log.line(f"FIXTURE lot={lot_id} path={destination} bytes={len(compacted)}")
     return destination
 
 
@@ -260,6 +295,10 @@ def _fetch_fixtures(settings: Any, rules: Any, log: _Log) -> None:
     from cuti.scrapers.catawiki_lot_page import parse_lot_page
 
     for index, lot_id in enumerate(LIVE_LOTS):
+        destination = PROJECT_ROOT / "tests" / "fixtures" / "live" / f"{lot_id}.html"
+        if destination.is_file():
+            log.line(f"FIXTURE_KEPT lot={lot_id} reason=existing path={destination}")
+            continue
         if index:
             time.sleep(max(1.0, settings.details_request_delay_seconds))
         url = build_lot_url(settings.catawiki_api_base, lot_id)
@@ -330,15 +369,16 @@ def _run_pipeline(settings: Any, log_dir: Path) -> int:
         "init-db": [*common, "init-db"],
         "ingest": [*common, "ingest", "--max-lots", "50"],
         "settle": [*common, "settle"],
-        "evaluate": [*common, "evaluate", "--query", "Omega Seamaster Diver 300M", "--cost", "1000", "--currency", "eur", "--condition", "naked"],
+        "evaluate": [*common, "evaluate", "--query", ACCEPTANCE_QUERY, "--cost", "1000", "--currency", "eur", "--condition", "naked"],
         "liquidity": [*common, "liquidity"],
         "report": [*common, "report"],
         "status": [*common, "status"],
     }
+    exit_code = 0
     for name, argv in commands.items():
         if _run_cli_logged(name, argv, env, log_dir):
-            return 1
-    return 0
+            exit_code = 1
+    return exit_code
 
 
 def main() -> int:

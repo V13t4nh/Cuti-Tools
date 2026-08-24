@@ -1,0 +1,27 @@
+{
+  "provenance": "synthetic_test_only",
+  "fixture_version": "logic-coverage-1",
+  "auction_file": "logic_coverage.csv",
+  "deal_file": "logic_coverage_deals.json",
+  "auction_record_count": 20,
+  "status_distribution": {
+    "sold": 17,
+    "unsold": 3,
+    "live": 0
+  },
+  "comparable_pool": {
+    "identity": "Omega / Seamaster Diver 300M / 210.30.42 / naked / round",
+    "total_attempts": 15,
+    "sold": 12,
+    "unsold": 3,
+    "quarters": ["2025-Q4", "2026-Q1", "2026-Q2"],
+    "lots_per_quarter": 5
+  },
+  "condition_values": ["naked", "box", "papers", "fullset"],
+  "form_values": ["round", "rectangular", "square", "tonneau", "other", "unknown"],
+  "covered_fields": ["hammer_eur", "hearts", "bids_count", "opened_at", "ended_at"],
+  "deal_record_count": 5,
+  "deal_cases": ["pricing-path", "thin-data", "deduplication", "old-window"],
+  "not_source_truth": true,
+  "usage": "Use only for normalized business-logic, pricing, liquidity, deal and UI tests. Synthetic fixtures are never a source for margin or comparable-pool truth; do not mix with scraped-source metrics."
+}

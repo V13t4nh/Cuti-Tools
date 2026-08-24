@@ -13,6 +13,8 @@ from ..errors import StorageError
 from ..models import Condition, Lot, WatchForm
 from .schema import NO, YES, utcnow
 
+SYNTHETIC_SOURCE = "synthetic_test"
+
 
 def _row_to_lot(row: sqlite3.Row) -> Lot:
     values: dict[str, object] = {
@@ -134,9 +136,10 @@ def fetch_lots_for_model(
     rows = conn.execute(
         """SELECT * FROM lots WHERE model_key = ? AND condition_tag = ?
            AND ended_at >= ? AND ended_at <= ?
+           AND source != ?
            AND NOT (needs_review = 1 AND review_status = 'pending')
            ORDER BY ended_at""",
-        (model_key, condition.value, since.isoformat(), today.isoformat()),
+        (model_key, condition.value, since.isoformat(), today.isoformat(), SYNTHETIC_SOURCE),
     ).fetchall()
     return [_row_to_lot(row) for row in rows]
 
@@ -145,8 +148,9 @@ def fetch_lots_for_liquidity(conn: sqlite3.Connection, since: date) -> list[Lot]
     rows = conn.execute(
         """SELECT * FROM lots
            WHERE ended_at >= ?
+           AND source != ?
            ORDER BY ended_at""",
-        (since.isoformat(),),
+        (since.isoformat(), SYNTHETIC_SOURCE),
     ).fetchall()
     return [_row_to_lot(row) for row in rows]
 
@@ -157,9 +161,10 @@ def fetch_sold_lots_since(
     _with_row_factory(conn)
     rows = conn.execute(
         """SELECT * FROM lots WHERE condition_tag = ? AND sold = 1 AND ended_at >= ?
+           AND source != ?
            AND NOT (needs_review = 1 AND review_status = 'pending')
            ORDER BY ended_at""",
-        (condition.value, since.isoformat()),
+        (condition.value, since.isoformat(), SYNTHETIC_SOURCE),
     ).fetchall()
     return [_row_to_lot(row) for row in rows]
 
@@ -181,7 +186,9 @@ def search_sold_lots(
         return []
     if limit is not None and limit <= 0:
         raise StorageError(f"limit must be positive, got {limit}")
-    params: list[object] = [fts_query, brand, condition_tag.value, since.isoformat()]
+    params: list[object] = [
+        fts_query, brand, condition_tag.value, since.isoformat(), SYNTHETIC_SOURCE
+    ]
     sold_clause = "" if include_unsold else " AND l.sold = 1"
     model_clause = ""
     if model_key is not None:
@@ -193,6 +200,7 @@ def search_sold_lots(
         JOIN lots_fts f ON f.rowid = l.rowid
         WHERE lots_fts MATCH ? AND l.brand = ? AND l.condition_tag = ? AND l.ended_at >= ?
         AND NOT (l.needs_review = 1 AND l.review_status = 'pending')
+        AND l.source != ?
         {sold_clause}
         {model_clause}
         ORDER BY l.ended_at DESC
