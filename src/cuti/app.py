@@ -9,12 +9,13 @@ from cuti.errors import CutiError
 from cuti.charts import hammer_histogram, price_position
 from cuti.evaluation import DealEvaluation
 from cuti.evaluation_chart import BuyerEvaluation, ComparisonChartData, evaluate_deal_with_chart
-from cuti.models import Condition
+from cuti.models import Condition, WatchForm
 from cuti.normalize import load_rules
 from cuti.storage import connect
 
 
 CONDITIONS = tuple(item.value for item in Condition)
+FORMS = tuple(item.value for item in WatchForm if item is not WatchForm.UNKNOWN)
 CURRENCIES = ("vnd", "eur")
 
 
@@ -117,6 +118,9 @@ def main() -> None:
                 )
                 condition = st.selectbox(
                     "Tình trạng", options=CONDITIONS, format_func=str
+                )
+                form = st.selectbox(
+                    "Hình dạng vỏ (Form)", options=FORMS, format_func=str
                 )
                 submitted = st.form_submit_button("Đánh giá deal", type="primary")
             if not submitted:

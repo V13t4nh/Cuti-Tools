@@ -131,6 +131,7 @@ SETTING_SPECS = (
     SettingSpec("CUTI_DETAILS_MAX_RETRIES", "details_max_retries", int, "2", _integer),
     SettingSpec("CUTI_DETAILS_ENABLED", "details_enabled", _parse_bool, "false", lambda _n, value: value),
     SettingSpec("CUTI_SETTLE_MAX_LOTS", "settle_max_lots", int, "200", _at_least_one),
+    SettingSpec("CUTI_SETTLE_MIN_HEARTS", "settle_min_hearts", int, "0", _nonnegative),
     SettingSpec("CUTI_URL_CHECK_MAX_LOTS", "url_check_max_lots", int, "200", _at_least_one),
     SettingSpec("CUTI_HTTP_TIMEOUT_SECONDS", "http_timeout_seconds", float, "20", _positive),
     SettingSpec("CUTI_RESPONSE_MAX_BYTES", "response_max_bytes", int, "5000000", _at_least_one),

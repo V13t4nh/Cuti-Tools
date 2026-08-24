@@ -38,6 +38,7 @@ class Settings:
     details_max_retries: int
     details_enabled: bool
     settle_max_lots: int
+    settle_min_hearts: int
     url_check_max_lots: int
     http_timeout_seconds: float
     response_max_bytes: int

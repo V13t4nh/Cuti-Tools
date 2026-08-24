@@ -131,6 +131,9 @@ def settle(
             if not outcome.is_closed:
                 result.still_open += 1
                 continue
+            if settings.settle_min_hearts > 0 and state.favorite_count < settings.settle_min_hearts:
+                result.finished.append(lot_id)
+                continue
             try:
                 try:
                     html = fetch_details(lot_id) if fetch_details is not None else None

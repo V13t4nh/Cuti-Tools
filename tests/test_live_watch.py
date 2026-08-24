@@ -242,6 +242,18 @@ class SettleTests(LiveWatchTestCase):
             ).fetchone()
             self.assertEqual(tuple(row), (0, None, 0))
 
+    def test_lot_below_settle_min_hearts_is_discarded_from_queue_without_write(self) -> None:
+        fake = FakeApi(
+            states={"1": state("1", hearts=5)}, outcomes={"1": outcome("1", sold=True, hammer=1000)}
+        )
+        settings = settings_for(self.tmp, CUTI_RULES_PATH=RULES_PATH, CUTI_SETTLE_MIN_HEARTS="10")
+        with storage.connect(settings.db_path) as conn:
+            self.queue(conn, "1", ROLEX, date(2026, 8, 10))
+            report = settle_lots(conn, self.rules, settings, TODAY, NOW, api=fake)
+            self.assertEqual(report.lots_written, 0)
+            self.assertEqual(report.queue_remaining, 0)
+            self.assertEqual(storage.count_rows(conn, "lots"), 0)
+
     def test_extended_auction_is_requeued_with_the_new_end_date(self) -> None:
         fake = FakeApi(states={"1": state("1", closed=False, ended=date(2026, 8, 25))})
         with storage.connect(self.settings.db_path) as conn:
