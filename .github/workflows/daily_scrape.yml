@@ -1,0 +1,47 @@
+name: Daily Catawiki Scrape (Fallback)
+
+on:
+  schedule:
+    # 03:15 UTC = 10:15 AM Vietnam Time
+    # 11:15 UTC = 18:15 PM Vietnam Time
+    - cron: '15 3,11 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[ui]
+
+      - name: Run scheduled crawl with skip check
+        env:
+          CUTI_LOTS_SOURCE_URL: "https://www.catawiki.com/en/c/333-watches"
+          CUTI_CATAWIKI_API_BASE: "https://www.catawiki.com"
+          CUTI_DETAILS_ENABLED: "true"
+          CUTI_SETTLE_MIN_HEARTS: "10"
+        run: |
+          python scripts/run_scheduled_crawl.py
+
+      - name: Upload updated database artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: auctions-database
+          path: var/auctions.db
+          if-no-files-found: ignore
