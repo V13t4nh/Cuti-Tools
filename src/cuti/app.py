@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from typing import Any
+
+# Ensure src/ is on sys.path for direct streamlit execution
+_SRC_ROOT = str(Path(__file__).resolve().parents[1])
+if _SRC_ROOT not in sys.path:
+    sys.path.insert(0, _SRC_ROOT)
 
 from cuti.config import load_settings
 from cuti.errors import CutiError
