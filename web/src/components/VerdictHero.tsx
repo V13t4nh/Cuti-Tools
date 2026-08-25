@@ -15,8 +15,8 @@ export default function VerdictHero({ decision, rate }: VerdictHeroProps) {
   const config = {
     green: {
       border: "border-emerald-500/30",
-      bg: "bg-emerald-950/20",
-      badge: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+      bg: "bg-emerald-950/25",
+      badge: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
       icon: CheckIcon,
       iconColor: "text-emerald-400",
       title: "NÊN MUA NGAY (RECOMMENDED DEAL)",
@@ -24,8 +24,8 @@ export default function VerdictHero({ decision, rate }: VerdictHeroProps) {
     },
     yellow: {
       border: "border-amber-500/30",
-      bg: "bg-amber-950/20",
-      badge: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+      bg: "bg-amber-950/25",
+      badge: "bg-amber-500/20 text-amber-400 border-amber-500/40",
       icon: AlertIcon,
       iconColor: "text-amber-400",
       title: "CÂN NHẮC RỦI RO (MARGINAL DEAL)",
@@ -33,17 +33,17 @@ export default function VerdictHero({ decision, rate }: VerdictHeroProps) {
     },
     red: {
       border: "border-rose-500/30",
-      bg: "bg-rose-950/20",
-      badge: "bg-rose-500/15 text-rose-400 border-rose-500/30",
+      bg: "bg-rose-950/25",
+      badge: "bg-rose-500/20 text-rose-400 border-rose-500/40",
       icon: CloseIcon,
       iconColor: "text-rose-400",
       title: "KHÔNG NÊN MUA (HIGH RISK / OVERPRICED)",
       subtitle: "Giá người bán đưa ra quá cao so với lịch sử giá búa thực tế trên sàn quốc tế.",
     },
     insufficient_data: {
-      border: "border-white/[0.08]",
-      bg: "bg-white/[0.02]",
-      badge: "bg-white/[0.06] text-slate-300 border-white/[0.1]",
+      border: "border-white/[0.12]",
+      bg: "bg-white/[0.03]",
+      badge: "bg-white/[0.08] text-slate-300 border-white/[0.14]",
       icon: InfoIcon,
       iconColor: "text-slate-400",
       title: "CHƯA ĐỦ DỮ LIỆU (INSUFFICIENT COMPARABLES)",
@@ -54,24 +54,28 @@ export default function VerdictHero({ decision, rate }: VerdictHeroProps) {
   const IconComponent = config.icon;
 
   return (
-    <div className={`glass-card rounded-2xl p-5 sm:p-6 border ${config.border} ${config.bg}`}>
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
+    <div className={`glass-card rounded-2xl p-6 sm:p-7 border ${config.border} ${config.bg}`}>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         {/* Left: Verdict Text */}
-        <div className="flex items-start gap-3.5">
-          <div className={`p-2.5 rounded-xl bg-black/40 border border-white/[0.08] ${config.iconColor} shrink-0`}>
-            <IconComponent className="w-5 h-5" />
+        <div className="flex items-start gap-4">
+          <div className={`p-3 rounded-xl bg-black/50 border border-white/[0.1] ${config.iconColor} shrink-0`}>
+            <IconComponent className="w-6 h-6" />
           </div>
           <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded border font-mono ${config.badge}`}>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className={`text-xs font-bold px-2.5 py-1 rounded-md border font-mono ${config.badge}`}>
                 {verdict.toUpperCase()}
               </span>
-              <span className="text-sm font-bold tracking-tight text-white">{config.title}</span>
+              <span className="text-base sm:text-lg font-extrabold tracking-tight text-white">
+                {config.title}
+              </span>
             </div>
-            <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">{config.subtitle}</p>
+            <p className="text-sm text-slate-200 mt-2 leading-relaxed font-normal">
+              {config.subtitle}
+            </p>
             {reason && (
-              <p className="text-[11px] text-slate-400 mt-1.5 font-mono">
-                <span className="text-slate-500">Lý do:</span> {reason}
+              <p className="text-xs text-slate-400 mt-2 font-mono">
+                <span className="text-slate-500 font-semibold">Lý do:</span> {reason}
               </p>
             )}
           </div>
@@ -79,16 +83,16 @@ export default function VerdictHero({ decision, rate }: VerdictHeroProps) {
 
         {/* Right: Max Buy Price */}
         {max_buy_cost_vnd !== null && (
-          <div className="shrink-0 bg-black/40 border border-white/[0.08] rounded-xl p-3.5 sm:text-right min-w-[200px]">
-            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex items-center sm:justify-end gap-1.5">
-              <ShieldIcon className="w-3.5 h-3.5 text-emerald-400" />
+          <div className="shrink-0 bg-black/50 border border-white/[0.1] rounded-2xl p-4 sm:p-5 sm:text-right min-w-[220px]">
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center sm:justify-end gap-1.5">
+              <ShieldIcon className="w-4 h-4 text-emerald-400" />
               Giá Trần Khuyên Mua
             </div>
-            <div className="text-xl sm:text-2xl font-black text-emerald-400 mt-1 font-mono tracking-tight">
+            <div className="text-2xl sm:text-3xl font-black text-emerald-400 mt-1.5 font-mono tracking-tight">
               {formatVND(max_buy_cost_vnd)}
             </div>
-            <div className="text-[11px] text-slate-500 mt-0.5 font-mono">
-              ~ {formatEUR(max_buy_cost_vnd / rate)}
+            <div className="text-xs text-slate-400 mt-1 font-mono">
+              ~ {formatEUR(max_buy_cost_vnd / rate)} (EUR)
             </div>
           </div>
         )}

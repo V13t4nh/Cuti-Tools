@@ -45,34 +45,34 @@ export default function ProfitCards({ decision, rate }: ProfitCardsProps) {
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
       {cards.map((c) => {
         const Icon = c.icon;
         const isPositive = c.eur !== null && c.eur > 0;
         return (
           <div
             key={c.title}
-            className="glass-card rounded-2xl p-4 flex flex-col justify-between"
+            className="glass-card rounded-2xl p-5 flex flex-col justify-between"
           >
             <div>
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-300">{c.title}</span>
-                <div className={`p-1.5 rounded-lg bg-white/[0.04] ${c.color}`}>
-                  <Icon className="w-3.5 h-3.5" />
+                <span className="text-sm font-semibold text-slate-200">{c.title}</span>
+                <div className={`p-2 rounded-lg bg-white/[0.05] ${c.color}`}>
+                  <Icon className="w-4 h-4" />
                 </div>
               </div>
-              <p className="text-[10px] text-slate-500 mt-0.5">{c.desc}</p>
+              <p className="text-xs text-slate-400 mt-1">{c.desc}</p>
             </div>
 
-            <div className="mt-4">
+            <div className="mt-5">
               <div
-                className={`text-lg sm:text-xl font-bold font-mono tracking-tight ${
+                className={`text-xl sm:text-2xl font-bold font-mono tracking-tight ${
                   isPositive ? c.accent : "text-rose-400"
                 }`}
               >
                 {c.vnd !== null ? `${isPositive ? "+" : ""}${formatVND(c.vnd)}` : "—"}
               </div>
-              <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+              <div className="text-xs sm:text-sm text-slate-400 font-mono mt-1">
                 {c.eur !== null ? `${isPositive ? "+" : ""}${formatEUR(c.eur)}` : "—"}
               </div>
             </div>

@@ -46,32 +46,34 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       {/* Hero Welcome Title */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/[0.06]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/[0.08]">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
-            <WatchIcon className="w-5 h-5 text-emerald-400" />
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-white/[0.06] flex items-center justify-center text-emerald-400 shrink-0">
+              <WatchIcon className="w-5 h-5" />
+            </div>
             Thẩm Định & Định Giá Mua Đồng Hồ
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Định giá mua tối đa và phân tích phân vị rủi ro dựa trên dữ liệu đấu giá thực tế
+          <p className="text-sm sm:text-base text-slate-400 mt-1.5 leading-relaxed">
+            Định giá mua tối đa và phân tích phân vị rủi ro dựa trên dữ liệu đấu giá thực tế quốc tế
           </p>
         </div>
       </div>
 
       {/* 3-Breakpoint Responsive Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-7 items-start">
         {/* Left Column: Form (lg: 5 cols) */}
         <div className="lg:col-span-5 xl:col-span-4 lg:sticky lg:top-24 space-y-4">
           <DealInputForm onEvaluate={handleEvaluate} isLoading={isLoading} />
         </div>
 
         {/* Right Column: Analytics & Verdict (lg: 7/8 cols) */}
-        <div className="lg:col-span-7 xl:col-span-8 space-y-4">
+        <div className="lg:col-span-7 xl:col-span-8 space-y-5">
           {error && (
-            <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2.5">
-              <AlertIcon className="w-4 h-4 shrink-0" />
+            <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-300 text-sm flex items-center gap-3">
+              <AlertIcon className="w-5 h-5 shrink-0" />
               <span>{error}</span>
             </div>
           )}
@@ -94,9 +96,9 @@ export default function Home() {
               <ComparablesTable lots={data.comparables} rate={data.eur_vnd_rate} />
             </>
           ) : (
-            <div className="glass-card rounded-2xl p-12 text-center text-slate-400">
-              <WatchIcon className="w-6 h-6 text-emerald-400 mx-auto animate-pulse mb-2" />
-              <p className="text-xs font-mono">Đang tính toán dữ liệu định giá...</p>
+            <div className="glass-card rounded-2xl p-14 text-center text-slate-400">
+              <WatchIcon className="w-8 h-8 text-emerald-400 mx-auto animate-pulse mb-3" />
+              <p className="text-sm font-mono font-medium">Đang tính toán dữ liệu định giá...</p>
             </div>
           )}
         </div>

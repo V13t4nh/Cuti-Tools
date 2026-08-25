@@ -46,23 +46,23 @@ export default function BreakEvenChart({ chart, rate }: BreakEvenChartProps) {
     : null;
 
   return (
-    <div className="glass-card rounded-2xl p-5 border border-white/[0.08]">
-      <div className="flex items-center justify-between mb-3">
+    <div className="glass-card rounded-2xl p-6 sm:p-7 border border-white/[0.08]">
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-xs font-bold text-white flex items-center gap-2 tracking-tight">
-            <BarChartIcon className="w-4 h-4 text-slate-300" />
+          <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2.5 tracking-tight">
+            <BarChartIcon className="w-5 h-5 text-slate-300" />
             Phân Phối Giá Búa Lịch Sử (€) & Vạch Hòa Vốn
           </h3>
-          <p className="text-[10px] text-slate-400 mt-0.5">
-            Ngưỡng giá búa cần đạt để bảo toàn vốn so với các phiên chốt thực tế
+          <p className="text-xs text-slate-400 mt-1">
+            Ngưỡng giá búa cần đạt để bảo toàn vốn so với các phiên chốt thực tế của sàn
           </p>
         </div>
       </div>
 
       {/* Chart Canvas */}
-      <div className="relative h-40 w-full pt-4 pb-6 select-none">
+      <div className="relative h-48 w-full pt-4 pb-7 select-none">
         {/* Bars */}
-        <div className="absolute inset-0 pb-6 flex items-end gap-1.5 px-2">
+        <div className="absolute inset-0 pb-7 flex items-end gap-2 px-2">
           {bins.map((bin, idx) => {
             const heightPercent = (bin.count / maxCount) * 85;
             const isHovered = hoveredBin === idx;
@@ -75,19 +75,19 @@ export default function BreakEvenChart({ chart, rate }: BreakEvenChartProps) {
               >
                 {/* Tooltip */}
                 {isHovered && (
-                  <div className="absolute -top-11 z-20 px-2.5 py-1 rounded-lg bg-black/95 border border-white/20 text-[10px] font-mono text-white whitespace-nowrap shadow-xl">
-                    <span>{formatEUR(bin.start)} - {formatEUR(bin.end)}</span>
-                    <span className="text-emerald-400 ml-1.5 font-bold">({bin.count} lô)</span>
+                  <div className="absolute -top-12 z-20 px-3 py-1.5 rounded-xl bg-black/95 border border-white/20 text-xs font-mono text-white whitespace-nowrap shadow-2xl">
+                    <span className="font-semibold">{formatEUR(bin.start)} - {formatEUR(bin.end)}</span>
+                    <span className="text-emerald-400 ml-2 font-bold">({bin.count} lô)</span>
                   </div>
                 )}
 
                 {/* Bar */}
                 <div
-                  style={{ height: `${Math.max(heightPercent, 6)}%` }}
-                  className={`w-full rounded-t-sm transition-all duration-150 ${
+                  style={{ height: `${Math.max(heightPercent, 8)}%` }}
+                  className={`w-full rounded-t-md transition-all duration-150 ${
                     isHovered
-                      ? "bg-slate-200"
-                      : "bg-slate-700/60 hover:bg-slate-500/80"
+                      ? "bg-slate-100"
+                      : "bg-slate-700/70 hover:bg-slate-500/90"
                   }`}
                 />
               </div>
@@ -99,16 +99,16 @@ export default function BreakEvenChart({ chart, rate }: BreakEvenChartProps) {
         {breakEvenPercent !== null && input_hammer_eur !== null && (
           <div
             style={{ left: `${breakEvenPercent}%` }}
-            className="absolute top-0 bottom-6 w-px bg-rose-500 border-l border-dashed border-rose-500 z-10 pointer-events-none"
+            className="absolute top-0 bottom-7 w-px bg-rose-500 border-l border-dashed border-rose-500 z-10 pointer-events-none"
           >
-            <div className="absolute -top-3 -left-16 bg-rose-950 text-rose-300 border border-rose-500/40 px-2 py-0.5 rounded text-[9px] font-mono font-bold whitespace-nowrap shadow-md">
+            <div className="absolute -top-4 -left-20 bg-rose-950/95 text-rose-300 border border-rose-500/50 px-2.5 py-1 rounded-md text-xs font-mono font-bold whitespace-nowrap shadow-lg">
               Hòa vốn: {formatEUR(input_hammer_eur)} ({formatVND(input_hammer_eur * rate)})
             </div>
           </div>
         )}
 
         {/* X-Axis */}
-        <div className="absolute bottom-0 inset-x-0 flex justify-between text-[10px] text-slate-500 font-mono px-2 pt-1 border-t border-white/[0.08]">
+        <div className="absolute bottom-0 inset-x-0 flex justify-between text-xs text-slate-400 font-mono px-2 pt-2 border-t border-white/[0.08]">
           <span>{formatEUR(minVal)}</span>
           <span>{formatEUR((minVal + maxVal) / 2)}</span>
           <span>{formatEUR(maxVal)}</span>

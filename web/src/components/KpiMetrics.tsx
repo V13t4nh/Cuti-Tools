@@ -14,7 +14,7 @@ export default function KpiMetrics({ decision }: KpiMetricsProps) {
       label: "Số Mẫu Đã Bán",
       value: `${decision.sample_size} lô`,
       icon: WatchIcon,
-      color: "text-slate-400",
+      color: "text-slate-300",
     },
     {
       label: "Tỷ Lệ Bán Được",
@@ -26,7 +26,7 @@ export default function KpiMetrics({ decision }: KpiMetricsProps) {
       label: "Thời Gian Chốt Phiên",
       value: formatDays(decision.median_days_to_close),
       icon: ClockIcon,
-      color: "text-slate-300",
+      color: "text-slate-200",
     },
     {
       label: "Chuyển Đổi Tim → Búa",
@@ -37,20 +37,20 @@ export default function KpiMetrics({ decision }: KpiMetricsProps) {
   ];
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       {kpis.map((kpi) => {
         const Icon = kpi.icon;
         return (
           <div
             key={kpi.label}
-            className="glass-card rounded-xl p-3.5 flex items-center gap-3"
+            className="glass-card rounded-2xl p-4 sm:p-5 flex items-center gap-3.5"
           >
-            <div className={`p-2 rounded-lg bg-white/[0.04] border border-white/[0.06] ${kpi.color}`}>
-              <Icon className="w-4 h-4" />
+            <div className={`p-2.5 rounded-xl bg-white/[0.05] border border-white/[0.08] ${kpi.color}`}>
+              <Icon className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-[11px] text-slate-400 font-medium">{kpi.label}</div>
-              <div className="text-sm sm:text-base font-bold font-mono text-white tracking-tight">{kpi.value}</div>
+              <div className="text-xs sm:text-sm text-slate-400 font-medium">{kpi.label}</div>
+              <div className="text-base sm:text-lg font-bold font-mono text-white tracking-tight mt-0.5">{kpi.value}</div>
             </div>
           </div>
         );
