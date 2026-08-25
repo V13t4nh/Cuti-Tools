@@ -89,8 +89,13 @@ export default function Home() {
               {/* 3. KPI Grid */}
               <KpiMetrics decision={data.decision} />
 
-              {/* 4. Break-Even Histogram Chart */}
-              <BreakEvenChart chart={data.chart} rate={data.eur_vnd_rate} />
+              {/* 4. Price Timeline & Risk Corridor Chart */}
+              <BreakEvenChart
+                chart={data.chart}
+                comparables={data.comparables}
+                decision={data.decision}
+                rate={data.eur_vnd_rate}
+              />
 
               {/* 5. Historical Comparables Table */}
               <ComparablesTable lots={data.comparables} rate={data.eur_vnd_rate} />
