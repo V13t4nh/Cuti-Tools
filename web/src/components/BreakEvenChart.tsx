@@ -29,8 +29,6 @@ export default function BreakEvenChart({
 
   // Price calculations & dynamic percentiles
   const {
-    minPrice,
-    maxPrice,
     p25,
     p75,
     yMin,
@@ -46,7 +44,7 @@ export default function BreakEvenChart({
     const prices = soldLots.map((l) => l.hammer_eur as number);
     if (prices.length === 0) {
       return {
-        minPrice: 0, maxPrice: 0, p25: 0, p75: 0, yMin: 0, yMax: 0, minTime: 0, maxTime: 0,
+        p25: 0, p75: 0, yMin: 0, yMax: 0, minTime: 0, maxTime: 0,
         p25WidthPct: 33, midWidthPct: 34, highWidthPct: 33, needlePct: 50, riskZone: "safe"
       };
     }
@@ -55,7 +53,6 @@ export default function BreakEvenChart({
     const min = sorted[0];
     const max = sorted[sorted.length - 1];
 
-    // True mathematical percentiles
     const p25Val = sorted[Math.max(0, Math.floor(sorted.length * 0.25))] || min;
     const p75Val = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.75))] || max;
 
@@ -71,7 +68,6 @@ export default function BreakEvenChart({
     const minT = times.length > 0 ? Math.min(...times) : Date.now() - 365 * 86400000;
     const maxT = times.length > 0 ? Math.max(...times) : Date.now();
 
-    // Calculate dynamic continuum segment widths
     const totalRange = globalMax - globalMin || 1;
     const p25Ratio = Math.max(0.15, Math.min(0.5, (p25Val - globalMin) / totalRange));
     const p75Ratio = Math.max(p25Ratio + 0.15, Math.min(0.85, (p75Val - globalMin) / totalRange));
@@ -80,12 +76,11 @@ export default function BreakEvenChart({
     const midPct = (p75Ratio - p25Ratio) * 100;
     const highPct = 100 - p25Pct - midPct;
 
-    // Calculate needle position based on input_hammer_eur
     let needleRatio = 0.5;
     let zone: "safe" | "marginal" | "risk" = "safe";
 
     if (input_hammer_eur) {
-      needleRatio = Math.max(0.04, Math.min(0.96, (input_hammer_eur - globalMin) / totalRange));
+      needleRatio = Math.max(0.02, Math.min(0.98, (input_hammer_eur - globalMin) / totalRange));
       if (input_hammer_eur <= p25Val) {
         zone = "safe";
       } else if (input_hammer_eur <= p75Val) {
@@ -96,8 +91,6 @@ export default function BreakEvenChart({
     }
 
     return {
-      minPrice: globalMin,
-      maxPrice: globalMax,
       p25: p25Val,
       p75: p75Val,
       yMin: yMinVal,
@@ -144,7 +137,6 @@ export default function BreakEvenChart({
   const corridorH = Math.max(p25Y - p75Y, 6);
   const breakEvenY = input_hammer_eur ? getY(input_hammer_eur) : null;
 
-  // Real historical count of sales cheaper than break-even
   const lowerCount = input_hammer_eur
     ? soldLots.filter((l) => (l.hammer_eur as number) < input_hammer_eur).length
     : 0;
@@ -340,94 +332,76 @@ export default function BreakEvenChart({
         )}
       </div>
 
-      {/* PART 2: THƯỚC ĐO PHÂN VỊ RỦI RO CHUẨN XÁC THEO LOGIC MUA HÀNG */}
-      <div className="pt-4 border-t border-white/[0.06] space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+      {/* PART 2: THƯỚC ĐO PHÂN VỊ RỦI RO (CLEAN & CONTAINED) */}
+      <div className="pt-4 border-t border-white/[0.06] space-y-2.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
           <div className="flex items-center gap-2">
             <ShieldIcon className="w-4 h-4 text-emerald-400" />
             <span className="text-sm font-bold text-white tracking-tight">
-              Thước Đo Phân Vị Giá Hòa Vốn (Giá Nhập So Với Toàn Bộ Thị Trường)
+              Thước Đo Phân Vị Rủi Ro
             </span>
           </div>
 
           {input_hammer_eur && (
-            <span className="text-xs font-mono text-slate-300">
+            <div className="text-xs font-mono text-slate-300">
+              Điểm hòa vốn: <strong className="text-white font-bold">{formatEUR(input_hammer_eur)}</strong>
+              {" — "}
               {riskZone === "safe" ? (
-                <span className="text-emerald-400 font-bold">🟢 Vùng Lãi Rất An Toàn</span>
+                <span className="text-emerald-400 font-bold">🟢 Vùng Rất An Toàn</span>
               ) : riskZone === "marginal" ? (
-                <span className="text-amber-400 font-bold">🟡 Vùng Giá Trung Bình</span>
+                <span className="text-amber-400 font-bold">🟡 Vùng Trung Bình</span>
               ) : (
                 <span className="text-rose-400 font-bold">🔴 Vùng Rủi Ro Cao</span>
               )}
-              {" — "}Chỉ có {lowerCount}/{soldLots.length} lô quá khứ chốt rẻ hơn mức này.
-            </span>
+              <span className="text-slate-500 text-[11px] ml-1.5">
+                (Chỉ {lowerCount}/{soldLots.length} lô rẻ hơn)
+              </span>
+            </div>
           )}
         </div>
 
-        {/* Dynamic Risk Gauge Container */}
-        <div className="relative pt-8 pb-3">
-          {/* Dynamic Needle Marker */}
-          {input_hammer_eur && (
-            <div
-              style={{ left: `${needlePct}%` }}
-              className="absolute top-0 -translate-x-1/2 flex flex-col items-center z-10 pointer-events-none transition-all duration-300"
-            >
-              <div
-                className={`px-3 py-1 rounded-lg font-mono font-bold text-xs shadow-xl whitespace-nowrap border ${
-                  riskZone === "safe"
-                    ? "bg-emerald-950 text-emerald-300 border-emerald-500/50"
-                    : riskZone === "marginal"
-                    ? "bg-amber-950 text-amber-300 border-amber-500/50"
-                    : "bg-rose-950 text-rose-300 border-rose-500/50"
-                }`}
-              >
-                Điểm Hòa Vốn Của Bạn: {formatEUR(input_hammer_eur)}
-              </div>
-              <div
-                className={`w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[6px] ${
-                  riskZone === "safe"
-                    ? "border-t-emerald-500"
-                    : riskZone === "marginal"
-                    ? "border-t-amber-500"
-                    : "border-t-rose-500"
-                }`}
-              />
-            </div>
-          )}
-
+        {/* Compact, Contained Gauge Track with Sleek Pin */}
+        <div className="relative py-2">
           {/* Dynamic Continuum Track */}
-          {/* Trái = Thấp = An Toàn (Xanh) | Giữa = Trung Bình (Vàng) | Phải = Đắt/Nguy Hiểm (Đỏ) */}
-          <div className="h-4 w-full rounded-full bg-slate-950 overflow-hidden flex p-0.5 border border-white/[0.12] shadow-inner">
+          <div className="h-3.5 w-full rounded-full bg-slate-950 overflow-hidden flex p-0.5 border border-white/[0.12] shadow-inner relative">
             {/* Safe Zone (Min -> p25) */}
             <div
               style={{ width: `${p25WidthPct}%` }}
-              className="h-full bg-gradient-to-r from-emerald-600 to-emerald-500 rounded-l-full relative group cursor-help"
-              title="Vùng Giá Nhập Rẻ & An Toàn (Dưới p25)"
+              className="h-full bg-gradient-to-r from-emerald-600 to-emerald-500 rounded-l-full"
+              title="Vùng Giá Nhập Rẻ & An Toàn"
             />
             {/* Marginal Zone (p25 -> p75) */}
             <div
               style={{ width: `${midWidthPct}%` }}
-              className="h-full bg-gradient-to-r from-amber-500 to-amber-600 relative group cursor-help"
-              title="Vùng Giá Trung Bình Thị Trường (p25 đến p75)"
+              className="h-full bg-gradient-to-r from-amber-500 to-amber-600"
+              title="Vùng Giá Trung Bình Thị Trường"
             />
             {/* High Risk Zone (p75 -> Max) */}
             <div
               style={{ width: `${highWidthPct}%` }}
-              className="h-full bg-gradient-to-r from-rose-600 to-rose-700 rounded-r-full relative group cursor-help"
-              title="Vùng Giá Cao / Nguy Cơ Lỗ (Trên p75)"
+              className="h-full bg-gradient-to-r from-rose-600 to-rose-700 rounded-r-full"
+              title="Vùng Giá Cao / Nguy Cơ Lỗ"
             />
+
+            {/* Sleek Integrated White Cursor Indicator (Never Overflows) */}
+            {input_hammer_eur && (
+              <div
+                style={{ left: `${needlePct}%` }}
+                className="absolute top-0 bottom-0 w-1.5 -translate-x-1/2 bg-white rounded-full shadow-[0_0_8px_rgba(255,255,255,0.9)] z-10 transition-all duration-300 pointer-events-none"
+              />
+            )}
           </div>
 
           {/* Scale Legend Labels */}
-          <div className="flex justify-between text-xs font-semibold mt-2.5 px-1 font-mono">
+          <div className="flex justify-between text-xs font-semibold mt-2 px-1 font-mono">
             <span className="text-emerald-400 flex items-center gap-1">
-              🟢 Vùng An Toàn (&lt; {formatEUR(p25)})
+              🟢 An Toàn (&lt; {formatEUR(p25)})
             </span>
             <span className="text-amber-400 flex items-center gap-1">
-              🟡 Vùng Trung Bình ({formatEUR(p25)} - {formatEUR(p75)})
+              🟡 Trung Bình ({formatEUR(p25)} - {formatEUR(p75)})
             </span>
             <span className="text-rose-400 flex items-center gap-1">
-              🔴 Vùng Rủi Ro Cao (&gt; {formatEUR(p75)})
+              🔴 Rủi Ro (&gt; {formatEUR(p75)})
             </span>
           </div>
         </div>
