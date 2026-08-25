@@ -3,53 +3,47 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --background: 222 47% 4%;
-    --foreground: 210 40% 98%;
-  }
-
   body {
-    @apply bg-[#07090E] text-slate-100 antialiased selection:bg-emerald-500 selection:text-white min-h-screen;
+    @apply bg-[#090A0E] text-slate-100 antialiased min-h-screen selection:bg-emerald-500 selection:text-black;
     background-image: 
-      radial-gradient(at 0% 0%, rgba(16, 185, 129, 0.05) 0px, transparent 50%),
-      radial-gradient(at 100% 0%, rgba(245, 158, 11, 0.03) 0px, transparent 50%),
-      radial-gradient(at 50% 100%, rgba(30, 41, 59, 0.2) 0px, transparent 50%);
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(120, 119, 198, 0.08), transparent),
+      radial-gradient(ellipse 50% 50% at 100% 100%, rgba(16, 185, 129, 0.04), transparent);
     background-attachment: fixed;
   }
 }
 
-/* Custom Luxury Scrollbar */
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
-  background: #0B0F17;
+  background: #090A0E;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1E293B;
+  background: #1E2330;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: #2D3748;
 }
 
-/* Glassmorphism Panel Utility */
-.glass-panel {
-  background: rgba(15, 23, 42, 0.65);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(51, 65, 85, 0.4);
+/* Luxury Glass Panel */
+.glass-card {
+  background-color: rgba(17, 19, 26, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
-.glass-panel-interactive {
-  background: rgba(15, 23, 42, 0.65);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(51, 65, 85, 0.4);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+.glass-card-hover {
+  background-color: rgba(17, 19, 26, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.glass-panel-interactive:hover {
-  border-color: rgba(100, 116, 139, 0.6);
-  background: rgba(30, 41, 59, 0.75);
+.glass-card-hover:hover {
+  background-color: rgba(23, 26, 36, 0.9);
+  border-color: rgba(255, 255, 255, 0.14);
 }

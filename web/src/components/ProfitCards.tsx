@@ -2,7 +2,7 @@
 
 import { DealEvaluation } from "@/lib/types";
 import { formatVND, formatEUR } from "@/lib/formatters";
-import { Shield, Target, Rocket } from "lucide-react";
+import { ShieldIcon, TargetIcon, TrendingUpIcon } from "./Icons";
 
 interface ProfitCardsProps {
   decision: DealEvaluation;
@@ -17,33 +17,30 @@ export default function ProfitCards({ decision, rate }: ProfitCardsProps) {
   const cards = [
     {
       title: "Lãi Ròng An Toàn (p25)",
-      desc: "25% trường hợp giá búa thấp nhất",
+      desc: "25% thấp nhất thị trường",
       eur: net_p25_eur,
       vnd: net_p25_eur ? net_p25_eur * rate : null,
-      icon: Shield,
+      icon: ShieldIcon,
       color: "text-emerald-400",
-      border: "border-emerald-500/20",
-      bg: "bg-emerald-950/20",
+      accent: "text-emerald-400",
     },
     {
       title: "Lãi Ròng Kỳ Vọng (Median)",
-      desc: "Mức lãi ròng trung bình kỳ vọng",
+      desc: "Mức lãi ròng trung vị",
       eur: net_median_eur,
       vnd: net_median_eur ? net_median_eur * rate : null,
-      icon: Target,
-      color: "text-sky-400",
-      border: "border-sky-500/20",
-      bg: "bg-sky-950/20",
+      icon: TargetIcon,
+      color: "text-slate-200",
+      accent: "text-white",
     },
     {
       title: "Lãi Ròng Tối Ưu (p75)",
-      desc: "25% trường hợp giá búa cao nhất",
+      desc: "25% cao nhất thị trường",
       eur: net_p75_eur,
       vnd: net_p75_eur ? net_p75_eur * rate : null,
-      icon: Rocket,
+      icon: TrendingUpIcon,
       color: "text-amber-400",
-      border: "border-amber-500/20",
-      bg: "bg-amber-950/20",
+      accent: "text-amber-300",
     },
   ];
 
@@ -55,25 +52,27 @@ export default function ProfitCards({ decision, rate }: ProfitCardsProps) {
         return (
           <div
             key={c.title}
-            className={`glass-panel rounded-xl p-4 border ${c.border} ${c.bg} flex flex-col justify-between`}
+            className="glass-card rounded-2xl p-4 flex flex-col justify-between"
           >
             <div>
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-slate-300">{c.title}</span>
-                <Icon className={`w-4 h-4 ${c.color}`} />
+                <div className={`p-1.5 rounded-lg bg-white/[0.04] ${c.color}`}>
+                  <Icon className="w-3.5 h-3.5" />
+                </div>
               </div>
-              <p className="text-[10px] text-slate-400 mt-0.5">{c.desc}</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">{c.desc}</p>
             </div>
 
-            <div className="mt-3">
+            <div className="mt-4">
               <div
-                className={`text-lg sm:text-xl font-bold tracking-tight ${
-                  isPositive ? "text-white" : "text-rose-400"
+                className={`text-lg sm:text-xl font-bold font-mono tracking-tight ${
+                  isPositive ? c.accent : "text-rose-400"
                 }`}
               >
                 {c.vnd !== null ? `${isPositive ? "+" : ""}${formatVND(c.vnd)}` : "—"}
               </div>
-              <div className="text-xs text-slate-400 font-mono mt-0.5">
+              <div className="text-[11px] text-slate-500 font-mono mt-0.5">
                 {c.eur !== null ? `${isPositive ? "+" : ""}${formatEUR(c.eur)}` : "—"}
               </div>
             </div>

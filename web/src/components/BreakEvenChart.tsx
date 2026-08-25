@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { ComparisonChart } from "@/lib/types";
 import { formatEUR, formatVND } from "@/lib/formatters";
-import { BarChart2 } from "lucide-react";
+import { BarChartIcon } from "./Icons";
 
 interface BreakEvenChartProps {
   chart: ComparisonChart;
@@ -41,28 +41,27 @@ export default function BreakEvenChart({ chart, rate }: BreakEvenChartProps) {
 
   if (!hammer_prices_eur || hammer_prices_eur.length === 0) return null;
 
-  // Calculate Break-Even line X percentage
   const breakEvenPercent = input_hammer_eur !== null && maxVal > minVal
     ? Math.max(0, Math.min(100, ((input_hammer_eur - minVal) / (maxVal - minVal)) * 100))
     : null;
 
   return (
-    <div className="glass-panel rounded-2xl p-5 border border-slate-800/80">
-      <div className="flex items-center justify-between mb-4">
+    <div className="glass-card rounded-2xl p-5 border border-white/[0.08]">
+      <div className="flex items-center justify-between mb-3">
         <div>
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
-            <BarChart2 className="w-4 h-4 text-sky-400" />
+          <h3 className="text-xs font-bold text-white flex items-center gap-2 tracking-tight">
+            <BarChartIcon className="w-4 h-4 text-slate-300" />
             Phân Phối Giá Búa Lịch Sử (€) & Vạch Hòa Vốn
           </h3>
-          <p className="text-[11px] text-slate-400 mt-0.5">
-            So sánh giá búa cần đạt để bạn hòa vốn so với lịch sử thực tế của thị trường
+          <p className="text-[10px] text-slate-400 mt-0.5">
+            Ngưỡng giá búa cần đạt để bảo toàn vốn so với các phiên chốt thực tế
           </p>
         </div>
       </div>
 
-      {/* Chart Container */}
-      <div className="relative h-44 w-full pt-4 pb-6 select-none">
-        {/* Bars Container */}
+      {/* Chart Canvas */}
+      <div className="relative h-40 w-full pt-4 pb-6 select-none">
+        {/* Bars */}
         <div className="absolute inset-0 pb-6 flex items-end gap-1.5 px-2">
           {bins.map((bin, idx) => {
             const heightPercent = (bin.count / maxCount) * 85;
@@ -76,19 +75,19 @@ export default function BreakEvenChart({ chart, rate }: BreakEvenChartProps) {
               >
                 {/* Tooltip */}
                 {isHovered && (
-                  <div className="absolute -top-12 z-20 px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-700 text-[11px] text-white whitespace-nowrap shadow-xl">
-                    <span className="font-semibold">{formatEUR(bin.start)} - {formatEUR(bin.end)}</span>
+                  <div className="absolute -top-11 z-20 px-2.5 py-1 rounded-lg bg-black/95 border border-white/20 text-[10px] font-mono text-white whitespace-nowrap shadow-xl">
+                    <span>{formatEUR(bin.start)} - {formatEUR(bin.end)}</span>
                     <span className="text-emerald-400 ml-1.5 font-bold">({bin.count} lô)</span>
                   </div>
                 )}
 
-                {/* The Bar */}
+                {/* Bar */}
                 <div
                   style={{ height: `${Math.max(heightPercent, 6)}%` }}
-                  className={`w-full rounded-t-md transition-all duration-200 ${
+                  className={`w-full rounded-t-sm transition-all duration-150 ${
                     isHovered
-                      ? "bg-sky-400 shadow-lg shadow-sky-500/30"
-                      : "bg-sky-600/70 hover:bg-sky-500/90"
+                      ? "bg-slate-200"
+                      : "bg-slate-700/60 hover:bg-slate-500/80"
                   }`}
                 />
               </div>
@@ -100,16 +99,16 @@ export default function BreakEvenChart({ chart, rate }: BreakEvenChartProps) {
         {breakEvenPercent !== null && input_hammer_eur !== null && (
           <div
             style={{ left: `${breakEvenPercent}%` }}
-            className="absolute top-0 bottom-6 w-0.5 bg-rose-500 border-l-2 border-dashed border-rose-500 z-10 pointer-events-none"
+            className="absolute top-0 bottom-6 w-px bg-rose-500 border-l border-dashed border-rose-500 z-10 pointer-events-none"
           >
-            <div className="absolute -top-3.5 -left-16 bg-rose-950/90 text-rose-300 border border-rose-600/60 px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap shadow-md">
+            <div className="absolute -top-3 -left-16 bg-rose-950 text-rose-300 border border-rose-500/40 px-2 py-0.5 rounded text-[9px] font-mono font-bold whitespace-nowrap shadow-md">
               Hòa vốn: {formatEUR(input_hammer_eur)} ({formatVND(input_hammer_eur * rate)})
             </div>
           </div>
         )}
 
-        {/* X-Axis labels */}
-        <div className="absolute bottom-0 inset-x-0 flex justify-between text-[10px] text-slate-500 font-mono px-2 pt-1 border-t border-slate-800">
+        {/* X-Axis */}
+        <div className="absolute bottom-0 inset-x-0 flex justify-between text-[10px] text-slate-500 font-mono px-2 pt-1 border-t border-white/[0.08]">
           <span>{formatEUR(minVal)}</span>
           <span>{formatEUR((minVal + maxVal) / 2)}</span>
           <span>{formatEUR(maxVal)}</span>

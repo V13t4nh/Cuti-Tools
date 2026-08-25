@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Sparkles, Loader2, DollarSign, Tag, Clock, HelpCircle } from "lucide-react";
+import { WatchIcon } from "./Icons";
 
 interface DealInputFormProps {
   onEvaluate: (data: {
@@ -13,13 +13,6 @@ interface DealInputFormProps {
   }) => void;
   isLoading: boolean;
 }
-
-const PRESETS = [
-  { name: "Seiko Presage", query: "Seiko Presage SRPB41", cost: 6200000, currency: "vnd", condition: "fullset", form: "round" },
-  { name: "Omega Seamaster", query: "Omega Seamaster Diver 300M 210.30.42", cost: 28000000, currency: "vnd", condition: "fullset", form: "round" },
-  { name: "Citizen Tsuyosa", query: "Citizen Tsuyosa NJ0150", cost: 4500000, currency: "vnd", condition: "fullset", form: "round" },
-  { name: "Rolex Datejust", query: "Rolex Datejust 126234", cost: 180000000, currency: "vnd", condition: "fullset", form: "round" },
-];
 
 export default function DealInputForm({ onEvaluate, isLoading }: DealInputFormProps) {
   const [query, setQuery] = useState("Seiko Presage SRPB41");
@@ -43,22 +36,6 @@ export default function DealInputForm({ onEvaluate, isLoading }: DealInputFormPr
     }
   };
 
-  const applyPreset = (preset: typeof PRESETS[0]) => {
-    setQuery(preset.query);
-    setCurrency(preset.currency);
-    setCostStr(preset.currency === "vnd" ? preset.cost.toLocaleString("vi-VN") : preset.cost.toString());
-    setCondition(preset.condition);
-    setForm(preset.form);
-
-    onEvaluate({
-      query: preset.query,
-      cost: preset.cost,
-      currency: preset.currency,
-      condition: preset.condition,
-      form: preset.form,
-    });
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const rawCost = currency === "vnd" ? parseRawCost(costStr) : parseFloat(costStr.replace(",", "."));
@@ -74,38 +51,25 @@ export default function DealInputForm({ onEvaluate, isLoading }: DealInputFormPr
   };
 
   return (
-    <div className="glass-panel rounded-2xl p-5 sm:p-6 shadow-xl border border-slate-800/80">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-base font-bold text-white flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-emerald-400" />
-          Nhập Thông Tin Deal
-        </h2>
-        <span className="text-[11px] text-slate-400">Dev & Đối tác</span>
-      </div>
-
-      {/* Quick Presets Pills */}
-      <div className="mb-5">
-        <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-2">
-          Gợi ý mẫu phổ biến:
-        </label>
-        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          {PRESETS.map((p) => (
-            <button
-              key={p.name}
-              type="button"
-              onClick={() => applyPreset(p)}
-              className="flex-shrink-0 text-xs font-medium px-2.5 py-1.5 rounded-lg bg-slate-900/80 hover:bg-emerald-500/10 hover:text-emerald-300 hover:border-emerald-500/30 border border-slate-800 text-slate-300 transition-all"
-            >
-              {p.name}
-            </button>
-          ))}
+    <div className="glass-card rounded-2xl p-5 sm:p-6">
+      <div className="flex items-center justify-between pb-3.5 mb-4 border-b border-white/[0.06]">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-md bg-white/[0.06] flex items-center justify-center text-slate-300">
+            <WatchIcon className="w-4 h-4" />
+          </div>
+          <h2 className="text-sm font-bold text-white tracking-tight">
+            Thông Tin Chiếc Đồng Hồ
+          </h2>
         </div>
+        <span className="text-[10px] text-slate-500 font-mono uppercase tracking-wider">
+          Arbitrage Gate
+        </span>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Model Query */}
         <div>
-          <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+          <label className="block text-xs font-medium text-slate-300 mb-1.5">
             Tên / Mã Đồng Hồ (Model / Reference):
           </label>
           <input
@@ -113,7 +77,7 @@ export default function DealInputForm({ onEvaluate, isLoading }: DealInputFormPr
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Ví dụ: Seiko Presage SRPB41, Omega Seamaster 210.30.42..."
-            className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
+            className="w-full bg-black/40 border border-white/[0.1] rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500/70 focus:ring-1 focus:ring-emerald-500/40 transition-all font-medium"
             required
           />
         </div>
@@ -121,7 +85,7 @@ export default function DealInputForm({ onEvaluate, isLoading }: DealInputFormPr
         {/* Cost & Currency */}
         <div className="grid grid-cols-3 gap-2.5">
           <div className="col-span-2">
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+            <label className="block text-xs font-medium text-slate-300 mb-1.5">
               Giá Người Bán Rao:
             </label>
             <div className="relative">
@@ -130,23 +94,23 @@ export default function DealInputForm({ onEvaluate, isLoading }: DealInputFormPr
                 value={costStr}
                 onChange={handleCostChange}
                 placeholder={currency === "vnd" ? "6.200.000" : "250"}
-                className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white font-medium placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
+                className="w-full bg-black/40 border border-white/[0.1] rounded-xl px-3.5 py-2.5 text-sm text-white font-mono placeholder-slate-600 focus:outline-none focus:border-emerald-500/70 focus:ring-1 focus:ring-emerald-500/40 transition-all"
                 required
               />
-              <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-semibold pointer-events-none">
-                {currency.toUpperCase()}
+              <span className="absolute right-3 top-2.5 text-[11px] text-slate-500 font-mono uppercase font-bold pointer-events-none">
+                {currency}
               </span>
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+            <label className="block text-xs font-medium text-slate-300 mb-1.5">
               Đơn Vị:
             </label>
             <select
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
-              className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
+              className="w-full bg-black/40 border border-white/[0.1] rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500/70 transition-all font-medium cursor-pointer"
             >
               <option value="vnd">VNĐ (₫)</option>
               <option value="eur">EUR (€)</option>
@@ -157,27 +121,27 @@ export default function DealInputForm({ onEvaluate, isLoading }: DealInputFormPr
         {/* Condition & Watch Form */}
         <div className="grid grid-cols-2 gap-2.5">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              Tình Trạng (Condition):
+            <label className="block text-xs font-medium text-slate-300 mb-1.5">
+              Tình Trạng:
             </label>
             <select
               value={condition}
               onChange={(e) => setCondition(e.target.value)}
-              className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
+              className="w-full bg-black/40 border border-white/[0.1] rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500/70 transition-all cursor-pointer"
             >
-              <option value="fullset">Fullset (Đầy đủ hộp sổ)</option>
-              <option value="naked">Naked (Chỉ đồng hồ)</option>
+              <option value="fullset">Fullset (Hộp & Sổ)</option>
+              <option value="naked">Naked (Chỉ Đồng Hồ)</option>
             </select>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+            <label className="block text-xs font-medium text-slate-300 mb-1.5">
               Dáng Vỏ (Form):
             </label>
             <select
               value={form}
               onChange={(e) => setForm(e.target.value)}
-              className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
+              className="w-full bg-black/40 border border-white/[0.1] rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500/70 transition-all cursor-pointer"
             >
               <option value="round">Tròn (Round)</option>
               <option value="square">Vuông (Square)</option>
@@ -188,23 +152,13 @@ export default function DealInputForm({ onEvaluate, isLoading }: DealInputFormPr
           </div>
         </div>
 
-        {/* Submit Button */}
+        {/* Action Button */}
         <button
           type="submit"
           disabled={isLoading}
-          className="w-full mt-2 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-sm shadow-lg shadow-emerald-500/20 active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full mt-2 py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-black font-bold text-xs uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm"
         >
-          {isLoading ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Đang Thẩm Định...
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-4 h-4" />
-              ⚡ ĐÁNH GIÁ DEAL NGAY
-            </>
-          )}
+          {isLoading ? "Đang Phân Tích..." : "Thẩm Định Deal Ngay"}
         </button>
       </form>
     </div>
