@@ -1,0 +1,90 @@
+{
+  "apply_local4173": {
+    "allow_methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "bytes": 1456,
+    "code": null,
+    "status": 200,
+    "strict_error": null,
+    "valid": null
+  },
+  "foreign_origin": {
+    "allow_methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "bytes": 91,
+    "code": "origin_not_allowed",
+    "status": 403,
+    "strict_error": null,
+    "valid": null
+  },
+  "get": {
+    "allow_methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "bytes": 1326,
+    "code": null,
+    "status": 200,
+    "strict_error": null,
+    "valid": null
+  },
+  "get_after": {
+    "allow_methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "bytes": 1456,
+    "code": null,
+    "status": 200,
+    "strict_error": null,
+    "valid": null
+  },
+  "options": {
+    "allow_methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "bytes": 0,
+    "code": null,
+    "status": 204,
+    "strict_error": null,
+    "valid": null
+  },
+  "preview_bool": {
+    "allow_methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "bytes": 1540,
+    "code": null,
+    "status": 200,
+    "strict_error": null,
+    "valid": false
+  },
+  "preview_custom": {
+    "allow_methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "bytes": 1919,
+    "code": null,
+    "status": 200,
+    "strict_error": null,
+    "valid": true
+  },
+  "preview_huge": {
+    "allow_methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "bytes": 1559,
+    "code": null,
+    "status": 200,
+    "strict_error": null,
+    "valid": false
+  },
+  "preview_nan": {
+    "allow_methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "bytes": 97,
+    "code": "invalid_json",
+    "status": 400,
+    "strict_error": null,
+    "valid": null
+  },
+  "preview_valid": {
+    "allow_methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "bytes": 1812,
+    "code": null,
+    "status": 200,
+    "strict_error": null,
+    "valid": true
+  },
+  "stale_1270014173": {
+    "allow_methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "bytes": 272,
+    "code": "stale_revision",
+    "status": 409,
+    "strict_error": null,
+    "valid": null
+  }
+}

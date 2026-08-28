@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from .config import Settings
+from .config_pricing import FormulaError, PricingProfile
 from .errors import PricingError
 from .models import Verdict
 
@@ -36,10 +37,22 @@ def percentile(values: Sequence[float], q: float) -> float:
     return float(ordered[lower] * (1.0 - weight) + ordered[upper] * weight)
 
 
+def _profile(settings: Settings) -> PricingProfile:
+    profile = settings.pricing_profile
+    if isinstance(profile, PricingProfile):
+        return profile
+    from .config_pricing_store import load_pricing_profile
+    return load_pricing_profile(settings)
+
+
+def pricing_value(settings: Settings, name: str) -> float:
+    return _profile(settings).values[name]
+
+
 def vnd_to_eur(amount_vnd: int, settings: Settings) -> float:
     if amount_vnd <= 0:
         raise PricingError(f"amount_vnd must be > 0, got {amount_vnd}")
-    return amount_vnd / settings.eur_vnd_rate
+    return amount_vnd / pricing_value(settings, "eur_vnd_rate")
 
 
 def net_proceeds(hammer_eur: float, cost_eur: float, settings: Settings) -> float:
@@ -48,15 +61,14 @@ def net_proceeds(hammer_eur: float, cost_eur: float, settings: Settings) -> floa
         raise PricingError(f"hammer_eur must be > 0, got {hammer_eur}")
     if cost_eur < 0:
         raise PricingError(f"cost_eur must be >= 0, got {cost_eur}")
-    fees = hammer_eur * settings.total_fee_multiplier
-    return hammer_eur - fees - settings.shipping_eur - cost_eur
+    return _profile(settings).evaluate("net_proceeds", hammer_eur=hammer_eur, cost_eur=cost_eur)
 
 
 def profit_threshold(cost_eur: float, settings: Settings) -> float:
     """Minimum acceptable profit: a margin on cost, with an absolute floor."""
     if cost_eur < 0:
         raise PricingError(f"cost_eur must be >= 0, got {cost_eur}")
-    return max(cost_eur * settings.min_margin_rate, settings.min_profit_eur)
+    return _profile(settings).evaluate("profit_threshold", hammer_eur=1.0, cost_eur=cost_eur)
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,10 +120,10 @@ def break_even_hammer(cost_eur: float, threshold_eur: float, settings: Settings)
     """Hammer needed to recover cost, fees, shipping and the profit threshold."""
     if cost_eur < 0 or threshold_eur < 0:
         raise PricingError("cost and threshold must be non-negative")
-    retained = 1.0 - settings.total_fee_multiplier
-    if retained <= 0:
-        raise PricingError("marketplace fee multiplier must be below 1")
-    return (cost_eur + settings.shipping_eur + threshold_eur) / retained
+    try:
+        return _profile(settings).inverse_break_even(cost_eur, threshold_eur)
+    except FormulaError as exc:
+        raise PricingError(str(exc)) from exc
 
 
 def quote(

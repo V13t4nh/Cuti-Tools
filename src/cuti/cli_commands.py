@@ -6,6 +6,7 @@ from datetime import date, datetime
 from types import SimpleNamespace
 from typing import Callable, Mapping
 
+from .errors import MediaUploadError
 from .evaluation import DealEvaluation
 from .models import Condition, WatchForm
 
@@ -72,9 +73,9 @@ def execute(
         else:
             settled = operations["ingest_one_lot"](conn, rules, settings, today, now, url=args.url)
         emit(
-            {"candidates": settled.candidates, "sold": settled.sold, "unsold": settled.unsold, "still_open": settled.still_open, "vanished": settled.vanished, "unclassified": settled.unclassified, "lots_written": settled.lots_written, "queue_remaining": settled.queue_remaining, "requests_made": settled.requests_made, "lots_total": count_rows(conn, "lots")},
+            {"candidates": settled.candidates, "sold": settled.sold, "unsold": settled.unsold, "still_open": settled.still_open, "vanished": settled.vanished, "unclassified": settled.unclassified, "details_failed": settled.details_failed, "errors": list(settled.errors), "lots_written": settled.lots_written, "queue_remaining": settled.queue_remaining, "requests_made": settled.requests_made, "lots_total": count_rows(conn, "lots")},
             args.json,
-            [f"Candidates    : {settled.candidates}", f"Sold          : {settled.sold}", f"Unsold        : {settled.unsold}", f"Still open    : {settled.still_open}", f"Vanished      : {settled.vanished}", f"Unclassified  : {settled.unclassified}", f"Lots written  : {settled.lots_written}", f"Queue left    : {settled.queue_remaining}", f"Requests      : {settled.requests_made}"],
+            [f"Candidates    : {settled.candidates}", f"Sold          : {settled.sold}", f"Unsold        : {settled.unsold}", f"Still open    : {settled.still_open}", f"Vanished      : {settled.vanished}", f"Unclassified  : {settled.unclassified}", f"Details failed: {settled.details_failed}", *settled.errors, f"Lots written  : {settled.lots_written}", f"Queue left    : {settled.queue_remaining}", f"Requests      : {settled.requests_made}"],
         )
     elif args.command == "check-urls":
         checked = operations["check_source_urls"](conn, settings, now)
@@ -119,10 +120,24 @@ def execute(
         path = operations["write_report"](conn, settings, today)
         emit({"report_path": str(path)}, args.json, [f"Report written to {path}"])
     elif args.command == "status":
-        payload = {"base_dir": str(settings.base_dir), "db_path": str(settings.db_path), "lots": count_rows(conn, "lots"), "live_watch": count_rows(conn, "live_watch"), "deals": count_rows(conn, "deals"), "quotes": count_rows(conn, "quotes"), "quote_comparables": count_rows(conn, "quote_comparables"), "alert_outbox": operations["outbox_counts"](conn), "notifier": settings.notifier, "min_comparables": settings.min_comparables, "match_threshold": settings.match_threshold}
+        freshness = operations["assess_data_freshness"](
+            conn, now=now, stale_after_hours=settings.data_stale_after_hours
+        )
+        from .storage import count_lot_images
+        payload = {"base_dir": str(settings.base_dir), "db_path": str(settings.db_path), "lots": count_rows(conn, "lots"), "live_watch": count_rows(conn, "live_watch"), "lot_images": count_lot_images(conn), "deals": count_rows(conn, "deals"), "quotes": count_rows(conn, "quotes"), "quote_comparables": count_rows(conn, "quote_comparables"), "alert_outbox": operations["outbox_counts"](conn), "notifier": settings.notifier, "min_comparables": settings.min_comparables, "match_threshold": settings.match_threshold, "data_freshness": {"status": freshness.status, "last_updated_at": freshness.last_updated_at.isoformat() if freshness.last_updated_at is not None else None, "age_hours": round(freshness.age_hours, 2) if freshness.age_hours is not None else None, "stale_after_hours": freshness.stale_after_hours}}
         emit(payload, args.json, [f"{key:<16}: {value}" for key, value in payload.items()])
     elif args.command == "audit":
         emit(operations["fetch_quote_audit"](conn, args.quote_id), True, [])
+    elif args.command == "upload-images":
+        from .telegram_media import process_lot_image_queue, require_telegram_credentials
+        if args.limit < 1:
+            raise MediaUploadError("upload-images limit must be a positive integer")
+        require_telegram_credentials(settings)
+        result = process_lot_image_queue(conn, settings, now, limit=args.limit)
+        failed = result["failed"]
+        emit(result, args.json, [f"Candidates    : {result['candidates']}", f"Uploaded      : {result['uploaded']}", f"Failed        : {len(failed)}"])
+        if failed:
+            return 1
     else:  # pragma: no cover
         raise ValueError(f"unknown command {args.command!r}")
     return 0

@@ -1,0 +1,277 @@
+PACKAGE_CANDIDATE=cuti-tools-notion-v21-20260828.zip
+STATUS=planned; final archive not created
+PRIOR_ARCHIVE=.zip/cuti-tools-notion-v20-20260825.zip; prior_bytes=405095
+MANIFEST_FILE=docs/evidence/formula-config/package-manifest-v21-candidate.txt; included after generation as archive metadata
+INCLUDE=root source metadata; config; docs and evidence; frontend source and manifests; scripts; specs; src; tests and fixtures
+EXCLUDE=.git,.codegraph,.venv,.pytest_cache,.zip,NOTION_SANDBOX,sandbox,var,data,scrape,downloads,frontend/node_modules,frontend/dist,frontend/cache,frontend/var,.env,generated root verify outputs,pyc
+SOURCE_FILE_COUNT=246
+SOURCE_BYTES=2748924
+ARCHIVE_FILE_COUNT=247
+ARCHIVE_UNCOMPRESSED_BYTES=000002760893
+LARGE_FILES_OVER_1MB=0
+BINARY_CANDIDATES=0
+SECRET_PATTERN_FILES=10; names only, values not printed
+FILES_BEGIN
+3353	.env.example
+792	.gitignore
+11073	AGENTS.md
+2954	config/catalog.json
+2428	config/rules.json
+14986	DESIGN.md
+9456	docs/evidence/formula-config/acceptance-cases.md
+61483	docs/evidence/formula-config/backend-final-contracts-01.log
+61281	docs/evidence/formula-config/backend-final-contracts-02.log
+50087	docs/evidence/formula-config/backend-final.log
+49908	docs/evidence/formula-config/backend-full-verify.log
+1810	docs/evidence/formula-config/backend-postfix-guards-01.log
+60952	docs/evidence/formula-config/backend-scripts-verify.log
+282	docs/evidence/formula-config/baseline-browser-availability.log
+869	docs/evidence/formula-config/baseline-default-db-readonly.log
+5073	docs/evidence/formula-config/baseline-frontend-build.log
+336	docs/evidence/formula-config/baseline-frontend-typecheck.log
+61810	docs/evidence/formula-config/baseline-full-verify.log
+1247	docs/evidence/formula-config/baseline-narrow-tests.log
+6785	docs/evidence/formula-config/baseline-snapshot.txt
+1296	docs/evidence/formula-config/cloakbrowser-readonly.md
+181167	docs/evidence/formula-config/final-clean-source-S-01.log
+49509	docs/evidence/formula-config/final-clean-source-S-02.log
+1332	docs/evidence/formula-config/final-daily-process-t2-02.log
+3484	docs/evidence/formula-config/final-daily-process-t2-03.log
+2538	docs/evidence/formula-config/final-direct-math-01.log
+2410	docs/evidence/formula-config/final-direct-math-02.log
+1319	docs/evidence/formula-config/final-direct-negative-result-01.log
+2351	docs/evidence/formula-config/final-freeze-hashes-end.log
+1917	docs/evidence/formula-config/final-freeze-hashes-start.log
+60977	docs/evidence/formula-config/final-full-verify-01.log
+60984	docs/evidence/formula-config/final-full-verify-02.log
+1202	docs/evidence/formula-config/final-hash-equality-01.log
+650	docs/evidence/formula-config/final-hash-equality-02.log
+748	docs/evidence/formula-config/final-hash-equality-03.log
+7508	docs/evidence/formula-config/final-http-pricing-01.log
+6041	docs/evidence/formula-config/final-http-pricing-02.log
+7634	docs/evidence/formula-config/final-http-pricing-03.log
+4776	docs/evidence/formula-config/final-manifest-02.json
+6682	docs/evidence/formula-config/final-manifest-generation-01.log
+1086	docs/evidence/formula-config/final-manifest-generation-02.log
+4776	docs/evidence/formula-config/final-manifest.json
+1369	docs/evidence/formula-config/final-resource-attack-01.log
+1604	docs/evidence/formula-config/final-resource-attack-02.log
+1473	docs/evidence/formula-config/final-resource-attack-03.log
+4850	docs/evidence/formula-config/frontend-build.log
+4850	docs/evidence/formula-config/frontend-final-build-v3.log
+6801	docs/evidence/formula-config/frontend-final-build-v4.log
+1157	docs/evidence/formula-config/frontend-final-inventory-v4.log
+1361	docs/evidence/formula-config/frontend-final-inventory-v5.log
+103	docs/evidence/formula-config/frontend-final-lint-v3.log
+2054	docs/evidence/formula-config/frontend-final-lint-v4.log
+113	docs/evidence/formula-config/frontend-final-typecheck-v3.log
+2064	docs/evidence/formula-config/frontend-final-typecheck-v4.log
+103	docs/evidence/formula-config/frontend-lint.log
+113	docs/evidence/formula-config/frontend-typecheck.log
+2187	docs/evidence/formula-config/http-pricing-fixture-03.json
+1542	docs/evidence/formula-config/http-pricing-fixture.json
+4277	docs/evidence/formula-config/lean-result-review.md
+4251	docs/evidence/formula-config/postfix-daily-process-t2.log
+2036	docs/evidence/formula-config/postfix-direct-probes-01.log
+2270	docs/evidence/formula-config/postfix-direct-probes-02.log
+3614	docs/evidence/formula-config/postfix-direct-probes-03.log
+360	docs/evidence/formula-config/postfix-direct-probes-04-nonaffine.log
+5040	docs/evidence/formula-config/postfix-frontend-build-01.log
+303	docs/evidence/formula-config/postfix-frontend-typecheck-01.log
+49925	docs/evidence/formula-config/postfix-full-unit-01.log
+61784	docs/evidence/formula-config/postfix-full-verify-01.log
+50362	docs/evidence/formula-config/postfix-full-verify-02.log
+2280	docs/evidence/formula-config/postfix-full-verify-03.log
+780	docs/evidence/formula-config/postfix-http-isolated-01.log
+3835	docs/evidence/formula-config/postfix-http-isolated-02.log
+586	docs/evidence/formula-config/postfix-http-isolated-03.log
+1188	docs/evidence/formula-config/postfix-http-isolated-04.log
+266	docs/evidence/formula-config/postfix-import-smoke-01.log
+2191	docs/evidence/formula-config/postfix-resource-attack-01.log
+493	docs/evidence/formula-config/postfix-resource-attack-02.log
+491	docs/evidence/formula-config/postfix-resource-attack-03.log
+1067	docs/evidence/formula-config/postfix-resource-attack-04.log
+799	frontend/index.html
+51578	frontend/package-lock.json
+676	frontend/package.json
+3542	frontend/src/api.ts
+55771	frontend/src/App.vue
+3673	frontend/src/components/AppIcon.vue
+25077	frontend/src/components/PricingSettingsPage.vue
+327	frontend/src/main.ts
+39362	frontend/src/styles.css
+3742	frontend/src/types.ts
+309	frontend/tsconfig.json
+268	frontend/vite.config.ts
+675	Makefile
+68293	notion.md
+555	pyproject.toml
+19004	README.md
+52	requirements.txt
+15023	scripts/Export-NotionSandbox.ps1
+10517	scripts/generate_sample_data.py
+1398	scripts/process_lock.py
+7001	scripts/run_daily.py
+1782	scripts/run_frontend.py
+6138	scripts/run_image_worker.py
+4918	scripts/run_scheduled_crawl.py
+14763	scripts/verify.py
+74	scripts/verify.sh
+16689	scripts/verify_live.py
+2486	specs/features/auction-lot-discovery.md
+5251	specs/features/daily-crawl-and-images.md
+2543	specs/features/liquidity-market.md
+4494	specs/features/product-search.md
+2783	specs/features/saved-items.md
+11551	specs/formula-config.md
+6919	specs/GLOBAL_UX_RULES.md
+4470	specs/IA.md
+5656	specs/journeys/assessment.md
+6684	specs/MOTION_CONTRACT.md
+2479	specs/README.md
+4678	specs/RESPONSIVE_CONTRACT.md
+5824	specs/SCREEN_INVENTORY.md
+8516	specs/UX_CONTRACT.md
+156	src/cuti/__init__.py
+20673	src/cuti/api.py
+4838	src/cuti/api_pricing.py
+9982	src/cuti/app.py
+7447	src/cuti/charts.py
+2818	src/cuti/cli.py
+11088	src/cuti/cli_commands.py
+357	src/cuti/cli_output.py
+3699	src/cuti/cli_parser.py
+2429	src/cuti/comparables.py
+4373	src/cuti/config.py
+9992	src/cuti/config_pricing.py
+5283	src/cuti/config_pricing_math.py
+6620	src/cuti/config_pricing_store.py
+2359	src/cuti/config_pricing_units.py
+8199	src/cuti/config_specs.py
+2348	src/cuti/config_types.py
+2912	src/cuti/daily.py
+1042	src/cuti/errors.py
+6812	src/cuti/evaluation.py
+5928	src/cuti/evaluation_chart.py
+5641	src/cuti/fetch.py
+6360	src/cuti/liquidity.py
+3278	src/cuti/liquidity_timeline.py
+4957	src/cuti/models.py
+6704	src/cuti/normalize.py
+3270	src/cuti/normalize_identity.py
+7469	src/cuti/normalize_rules.py
+3497	src/cuti/notifier.py
+789	src/cuti/pipeline/__init__.py
+1969	src/cuti/pipeline/details.py
+4200	src/cuti/pipeline/ingest.py
+5904	src/cuti/pipeline/quote.py
+7999	src/cuti/pipeline/report.py
+6187	src/cuti/pipeline/settlement.py
+10384	src/cuti/pipeline/settlement_resolver.py
+1034	src/cuti/pipeline/settlement_resolver_keys.py
+4913	src/cuti/pipeline/watch.py
+1238	src/cuti/price_limit.py
+6888	src/cuti/pricing.py
+6946	src/cuti/report.py
+250	src/cuti/scrapers/__init__.py
+5370	src/cuti/scrapers/catawiki.py
+3396	src/cuti/scrapers/catawiki_api.py
+9265	src/cuti/scrapers/catawiki_lot_page.py
+9296	src/cuti/scrapers/catawiki_payload.py
+3170	src/cuti/scrapers/deals.py
+8095	src/cuti/server.py
+2948	src/cuti/storage/__init__.py
+5146	src/cuti/storage/catalog.py
+1881	src/cuti/storage/deals.py
+1856	src/cuti/storage/freshness.py
+8771	src/cuti/storage/lots.py
+10122	src/cuti/storage/media.py
+7426	src/cuti/storage/quotes.py
+6863	src/cuti/storage/schema.py
+7190	src/cuti/storage/schema_ddl.py
+3442	src/cuti/storage/schema_migration.py
+5186	src/cuti/storage/user_items.py
+5238	src/cuti/storage/watch.py
+8793	src/cuti/telegram_media.py
+4168	src/cuti/ui_tabs.py
+4654	src/cuti/ui_theme.py
+7868	src/cuti/ui_views.py
+1	src/cuti_tools.egg-info/dependency_links.txt
+39	src/cuti_tools.egg-info/entry_points.txt
+6838	src/cuti_tools.egg-info/PKG-INFO
+52	src/cuti_tools.egg-info/requires.txt
+761	src/cuti_tools.egg-info/SOURCES.txt
+5	src/cuti_tools.egg-info/top_level.txt
+3515	tests/daily_crawl_harness.py
+11866	tests/daily_process_integration_t2.py
+10098	tests/fixtures/catawiki_sample_v2/auctions.csv
+1969	tests/fixtures/catawiki_sample_v2/deals.json
+41799	tests/fixtures/catawiki_sample_v2/lot_details.json
+11001	tests/fixtures/catawiki_sample_v2/manifest.json
+944	tests/fixtures/catawiki_search_pages_100_101.json
+467	tests/fixtures/daily_crawl/catawiki-lots-duplicate-conflict.json
+485	tests/fixtures/daily_crawl/catawiki-lots-duplicate-exact.json
+348	tests/fixtures/daily_crawl/cover_lookup.json
+294	tests/fixtures/daily_crawl/daily-source-cover-fixture.json
+294	tests/fixtures/daily_crawl/daily-source-payload-expected.json
+820	tests/fixtures/daily_crawl/daily-source-payload-fixture.json
+296	tests/fixtures/daily_crawl/telegram_sendphoto_success.json
+171953	tests/fixtures/live/105418344.html
+134401	tests/fixtures/live/105809071.html
+150130	tests/fixtures/live/105924279.html
+131221	tests/fixtures/live/106019970.html
+5084	tests/fixtures/logic_coverage/logic_coverage.csv
+1299	tests/fixtures/logic_coverage/logic_coverage_deals.json
+1086	tests/fixtures/logic_coverage/logic_coverage_manifest.json
+3595	tests/support.py
+6076	tests/test_app.py
+2973	tests/test_app_liquidity.py
+10918	tests/test_catawiki_api.py
+2847	tests/test_catawiki_lot_page.py
+2367	tests/test_charts_cycle.py
+2068	tests/test_charts_scale1.py
+5360	tests/test_config.py
+12057	tests/test_daily_crawl_queue_regressions.py
+13545	tests/test_daily_launcher_regressions.py
+9871	tests/test_daily_reconciliation_regressions.py
+5520	tests/test_daily_storage_regressions.py
+20373	tests/test_end_to_end_v2.py
+8621	tests/test_evaluation.py
+2080	tests/test_identity_reference_shapes.py
+6266	tests/test_liquidity_scale3.py
+5715	tests/test_live_details.py
+2064	tests/test_live_lot_fixtures.py
+24194	tests/test_live_watch.py
+6799	tests/test_logic_coverage.py
+5322	tests/test_media_vault.py
+7058	tests/test_normalize.py
+14056	tests/test_pipeline_cli.py
+6035	tests/test_pricing.py
+4676	tests/test_scale2_watch.py
+6553	tests/test_scrapers.py
+848	tests/test_source_line_limits.py
+1246	tests/test_stdlib_imports.py
+11677	tests/test_storage.py
+1671	tests/test_storage_synthetic.py
+2767	tests/test_t2_settlement_details.py
+5222	tests/test_t6_identity_resolver.py
+5573	tests/test_t6_storage_regressions.py
+1302	tests/test_verify_live.py
+12332	tests/test_verify_scripts.py
+FILES_END
+LARGE_FILE_PATHS_BEGIN
+LARGE_FILE_PATHS_END
+BINARY_PATHS_BEGIN
+BINARY_PATHS_END
+SECRET_PATTERN_PATHS_BEGIN
+.gitignore
+AGENTS.md
+notion.md
+scripts/Export-NotionSandbox.ps1
+specs/features/daily-crawl-and-images.md
+src/cuti/server.py
+tests/fixtures/live/105418344.html
+tests/fixtures/live/105809071.html
+tests/fixtures/live/105924279.html
+tests/fixtures/live/106019970.html
+SECRET_PATTERN_PATHS_END

@@ -1,0 +1,102 @@
+{
+  "browser": "Codex In-app Browser",
+  "url": "http://127.0.0.1:4188/settings",
+  "sampleInputs": {
+    "hammer_eur": 1000,
+    "cost_eur": 100
+  },
+  "previewText": "4\nChạy thử trước khi áp dụng\n\nNhập dữ liệu mẫu hữu hạn. Giá trị hiển thị bên dưới do backend trả về.\n\nhammer_eur\ncost_eur\nPreview\nApply cấu hình\nKết quả preview\nKết quả active\nLợi nhuận ròng\nnet_proceeds\n673.75 EUR\n673.75 EUR\nNgưỡng lợi nhuận\nprofit_threshold\n50.00 EUR\n50.00 EUR\nGiá hòa vốn\nbreak_even_hammer\n265.10 EUR\n265.10 EUR",
+  "successMessage": "Đã áp dụng cấu hình tính toán mới.",
+  "syntaxErrorText": "4\nChạy thử trước khi áp dụng\n\nNhập dữ liệu mẫu hữu hạn. Giá trị hiển thị bên dưới do backend trả về.\n\nBản nháp chưa áp dụng. Nếu rời trang, trình duyệt sẽ hỏi trước khi đóng hoặc tải lại.\n\nhammer_eur\ncost_eur\nPreview\nApply cấu hình\n\nsyntax · net_proceeds: expression has invalid syntax",
+  "divisionErrorText": "4\nChạy thử trước khi áp dụng\n\nNhập dữ liệu mẫu hữu hạn. Giá trị hiển thị bên dưới do backend trả về.\n\nBản nháp chưa áp dụng. Nếu rời trang, trình duyệt sẽ hỏi trước khi đóng hoặc tải lại.\n\nhammer_eur\ncost_eur\nPreview\nApply cấu hình\n\nunsupported_inverse · formulas.net_proceeds: net_proceeds must be affine with a > 0 and b < 0",
+  "invalidApplyEnabled": false,
+  "applyEnabledAfterPreview": true,
+  "disabledAfterInputEdit": true,
+  "assessment": {
+    "renderedText": "01 / QUYẾT ĐỊNH MUA\n\nThẩm định\n\nXác nhận đúng sản phẩm, nhập thông tin thương vụ và nhận phân tích ranh giới mua theo thời gian thực.\n\nINPUT → EVIDENCE → DECISION\nTHE CUT / BUY BOUNDARY\nChưa có dữ liệu thị trường. Thẩm định tạm thời bị chặn; bạn vẫn có thể lưu mẫu.\n1\nSản phẩm chuẩn\n\nTìm kiếm và chọn sản phẩm theo tên, model hoặc mã reference\n\n2\nThông tin thương vụ\n\nNhập giá chào, loại tiền tệ và tình trạng thực tế từ người bán\n\nGiá người bán chào\nTiền tệ\nChọn tiền tệ\nVND\nEUR\nTình trạng\nChọn tình trạng\nChỉ đồng hồ\nCó hộp\nCó giấy\nĐủ bộ\nThẩm định cơ hội",
+    "retentionScope": "in-session navigation and Apply; not full page reload",
+    "askAmount": "123456",
+    "currency": "vnd",
+    "condition": "fullset"
+  },
+  "persistedFields": [
+    {
+      "label": "Tên tham số 1",
+      "value": "commission_rate"
+    },
+    {
+      "label": "Giá trị commission_rate",
+      "value": "0.125"
+    },
+    {
+      "label": "Tên tham số 2",
+      "value": "vat_on_commission_rate"
+    },
+    {
+      "label": "Giá trị vat_on_commission_rate",
+      "value": "0.21"
+    },
+    {
+      "label": "Tên tham số 3",
+      "value": "shipping_eur"
+    },
+    {
+      "label": "Giá trị shipping_eur",
+      "value": "60"
+    },
+    {
+      "label": "Tên tham số 4",
+      "value": "eur_vnd_rate"
+    },
+    {
+      "label": "Giá trị eur_vnd_rate",
+      "value": "27000"
+    },
+    {
+      "label": "Tên tham số 5",
+      "value": "min_margin_rate"
+    },
+    {
+      "label": "Giá trị min_margin_rate",
+      "value": "0.15"
+    },
+    {
+      "label": "Tên tham số 6",
+      "value": "min_profit_eur"
+    },
+    {
+      "label": "Giá trị min_profit_eur",
+      "value": "50"
+    },
+    {
+      "label": "Tên tham số 7",
+      "value": "packing_eur"
+    },
+    {
+      "label": "Giá trị packing_eur",
+      "value": "15"
+    },
+    {
+      "label": "Tên helper 1",
+      "value": "total_fee_multiplier"
+    },
+    {
+      "label": "Biểu thức helper 1",
+      "value": "commission_rate * (1 + vat_on_commission_rate)"
+    },
+    {
+      "label": "Công thức net proceeds",
+      "value": "hammer_eur - hammer_eur * total_fee_multiplier - shipping_eur - cost_eur - packing_eur"
+    },
+    {
+      "label": "Công thức profit threshold",
+      "value": "max(cost_eur * min_margin_rate, min_profit_eur)"
+    }
+  ],
+  "layout": {
+    "content": 1191,
+    "viewport": 1191
+  },
+  "nativeConfirm": "inconclusive",
+  "screenshots": 0
+}

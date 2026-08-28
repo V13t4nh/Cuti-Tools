@@ -1,192 +1,189 @@
-"""Lightweight REST API server bridging CUTI core logic to Next.js frontend."""
+"""Small HTTP adapter for the local CUTI API."""
 
 from __future__ import annotations
 
 import json
-from datetime import date
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import math
 import sys
-from urllib.parse import parse_qs, urlparse
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse
 
-from .comparables import find_comparables
+from .api import ApiError, error_payload, get, query_params, write
 from .config import load_settings
-from .errors import CutiError
-from .evaluation_chart import evaluate_deal_with_chart
-from .liquidity import compute_liquidity
-from .models import Condition, WatchForm
-from .normalize import load_rules
-from .storage import connect, count_rows, fetch_lots_for_liquidity
+from .errors import MediaUploadError
+from .storage import connect, ensure_catalog, fetch_lot_image, load_catalog
+from .telegram_media import require_telegram_credentials, telegram_get_file
+
+_MAX_BODY = 256 * 1024
+
+
+def _json_constant(value: str) -> object:
+    raise ValueError(f"invalid JSON constant {value}")
+
+
+def _json_float(value: str) -> float:
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError("JSON number is not finite")
+    return number
+
+
+def _local_origin(value: str) -> bool:
+    parsed = urlparse(value)
+    return parsed.scheme in {"http", "https"} and parsed.hostname in {"localhost", "127.0.0.1", "::1"} and not parsed.username
 
 
 class CutiApiHandler(BaseHTTPRequestHandler):
-    """HTTP request handler for CUTI-Tools API."""
+    """Translate HTTP requests to typed application handlers."""
 
-    def _send_cors_headers(self) -> None:
+    def _headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
-    def _send_json(self, status: int, data: dict | list) -> None:
-        payload = json.dumps(data, default=str).encode("utf-8")
+    def _send(self, status: int, data: dict | list) -> None:
+        try:
+            payload = json.dumps(data, default=str, ensure_ascii=False, allow_nan=False).encode("utf-8")
+        except (TypeError, ValueError):
+            status = 500
+            payload = b'{"error":{"code":"non_finite_response","message":"Response contains an invalid number"}}'
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self._send_cors_headers()
+        self._headers()
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
-        self._send_cors_headers()
+        self._headers()
         self.end_headers()
 
-    def do_GET(self) -> None:
+    def _dispatch(self, method: str, body: object | None = None) -> None:
         parsed = urlparse(self.path)
-        path = parsed.path.rstrip("/")
-
+        pricing_route = parsed.path.rstrip("/") in {"/api/pricing-config", "/api/pricing-config/preview"}
+        if pricing_route:
+            origin = self.headers.get("Origin")
+            if origin and not _local_origin(origin):
+                self._send(403, {"error": {"code": "origin_not_allowed", "message": "pricing configuration is local-only"}})
+                return
         settings = load_settings()
-        today = date.today()
+        pricing_path = parsed.path.rstrip("/")
+        if (pricing_path == "/api/pricing-config" and method == "GET") or (pricing_path == "/api/pricing-config/preview" and method == "POST") or (pricing_path == "/api/pricing-config" and method == "PUT"):
+            from .api_pricing import get as pricing_get, write as pricing_write
+            status, payload = pricing_get(settings) if method == "GET" else pricing_write(settings, method, body or {})
+            self._send(status, payload)
+            return
+        conn = connect(settings.db_path)
+        try:
+            ensure_catalog(conn, load_catalog(settings.rules_path.parent / "catalog.json"), datetime.now(timezone.utc))
+            try:
+                if method == "GET":
+                    status, payload = get(conn, settings, parsed.path.rstrip("/"), query_params(parsed.query))
+                else:
+                    status, payload = write(conn, settings, method, parsed.path.rstrip("/"), body)
+            except ApiError as exc:
+                self._send(exc.status, error_payload(exc))
+                return
+            except Exception as exc:
+                self._send(500, {"error": {"code": "system_error", "message": "Request could not be completed", "details": str(exc)}})
+                return
+        finally:
+            conn.close()
+        self._send(status, payload)
 
-        with connect(settings.db_path) as conn:
-            if path == "/api/status":
-                lots_count = count_rows(conn, "lots")
-                queue_count = count_rows(conn, "live_watch")
-                self._send_json(200, {
-                    "lots_count": lots_count,
-                    "live_watch_count": queue_count,
-                    "eur_vnd_rate": settings.eur_vnd_rate,
-                    "match_threshold": settings.match_threshold,
-                    "min_comparables": settings.min_comparables,
-                })
-            elif path == "/api/liquidity":
-                report = compute_liquidity(conn, settings, today)
-                brands = [
-                    {
-                        "brand": b.brand,
-                        "form": b.form.value,
-                        "lots": b.lots,
-                        "sold": b.sold,
-                        "sell_through": b.sell_through,
-                        "median_days_to_close": b.median_days_to_close,
-                        "speed": b.speed,
-                        "heart_to_hammer": b.heart_to_hammer,
-                        "index": b.index,
-                        "latest_qoq_change": b.latest_qoq_change,
-                        "stop_buying": b.stop_buying,
-                        "status": b.status or "stable",
-                    }
-                    for b in report.brands
-                ]
-                self._send_json(200, {"brands": brands})
-            elif path == "/api/live-lots":
-                cursor = conn.execute(
-                    "SELECT lot_id, title, bidding_end_at, url FROM live_watch ORDER BY bidding_end_at ASC LIMIT 100"
-                )
-                rows = [dict(r) for r in cursor.fetchall()]
-                self._send_json(200, {"lots": rows})
-            else:
-                self._send_json(404, {"error": f"Endpoint not found: {path}"})
+    def do_GET(self) -> None:
+        parts = [urllib.parse.unquote(part) for part in urlparse(self.path).path.strip("/").split("/") if part]
+        if len(parts) == 5 and parts[:3] == ["api", "media", "lots"] and parts[4] == "cover":
+            self._stream_cover(parts[3])
+            return
+        self._dispatch("GET")
+
+    def _stream_cover(self, lot_id: str) -> None:
+        settings = load_settings()
+        conn = connect(settings.db_path)
+        try:
+            image = fetch_lot_image(conn, lot_id)
+        finally:
+            conn.close()
+        if image is None:
+            self._send(404, {"error": {"code": "cover_missing", "message": "Cover media is missing"}})
+            return
+        if image["state"] != "ready" or not image["telegram_file_id"]:
+            self._send(409, {"error": {"code": "cover_not_ready", "message": "Cover media is not ready", "state": image["state"]}})
+            return
+        try:
+            token, _ = require_telegram_credentials(settings)
+            file_path = telegram_get_file(settings, image["telegram_file_id"])
+            file_url = f"{settings.telegram_api_base}/file/bot{token}/{urllib.parse.quote(file_path, safe='/')}"
+            response = urllib.request.urlopen(file_url, timeout=settings.http_timeout_seconds)
+        except (MediaUploadError, urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError):
+            self._send(502, {"error": {"code": "telegram_media_unavailable", "message": "Telegram media could not be retrieved"}})
+            return
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", response.headers.get("Content-Type", "application/octet-stream"))
+            length = response.headers.get("Content-Length")
+            if length:
+                self.send_header("Content-Length", length)
+            self.send_header("Cache-Control", "public, max-age=86400, immutable")
+            self._headers()
+            self.end_headers()
+            while chunk := response.read(64 * 1024):
+                self.wfile.write(chunk)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            self.close_connection = True
+        finally:
+            response.close()
 
     def do_POST(self) -> None:
-        parsed = urlparse(self.path)
-        path = parsed.path.rstrip("/")
+        self._dispatch_body("POST")
 
-        if path != "/api/evaluate":
-            self._send_json(404, {"error": f"Endpoint not found: {path}"})
-            return
+    def do_PATCH(self) -> None:
+        self._dispatch_body("PATCH")
 
-        content_length = int(self.headers.get("Content-Length", 0))
-        body_bytes = self.rfile.read(content_length)
+    def do_PUT(self) -> None:
+        self._dispatch_body("PUT")
+
+    def do_DELETE(self) -> None:
+        self._dispatch("DELETE", {})
+
+    def _dispatch_body(self, method: str) -> None:
         try:
-            body = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
-        except Exception:
-            self._send_json(400, {"error": "Invalid JSON body"})
+            body = self._body()
+        except ApiError as exc:
+            self._send(exc.status, error_payload(exc))
             return
+        self._dispatch(method, body)
 
-        query = body.get("query", "").strip()
-        cost = float(body.get("cost", 0))
-        currency = body.get("currency", "vnd").lower()
-        cond_str = body.get("condition", "fullset").lower()
-        form_str = body.get("form", "round").lower()
-
-        if not query or cost <= 0:
-            self._send_json(400, {"error": "query and positive cost are required"})
-            return
-
-        settings = load_settings()
-        rules = load_rules(settings.rules_path)
-        today = date.today()
-        cond_obj = Condition.parse(cond_str)
-
+    def _body(self) -> object:
         try:
-            with connect(settings.db_path) as conn:
-                eval_res = evaluate_deal_with_chart(
-                    conn, rules, settings,
-                    query=query, cost=cost, currency=currency,
-                    condition=cond_obj, today=today,
-                )
-                raw_matches = find_comparables(
-                    conn, title=query, condition=cond_obj,
-                    rules=rules, settings=settings, today=today,
-                )
+            length = int(self.headers.get("Content-Length", 0))
+            if length < 0 or length > _MAX_BODY:
+                raise ApiError(413, "request_too_large", "Request body is too large")
+            return json.loads(self.rfile.read(length).decode("utf-8"), parse_constant=_json_constant, parse_float=_json_float) if length else {}
+        except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ApiError(400, "invalid_json", "Request body is not valid JSON") from exc
 
-                comparables = [
-                    {
-                        "lot_id": m.lot.lot_id,
-                        "title": m.lot.title,
-                        "brand": m.lot.brand,
-                        "hammer_eur": m.lot.hammer_eur,
-                        "hammer_vnd": int(round(m.lot.hammer_eur * settings.eur_vnd_rate)) if m.lot.hammer_eur else None,
-                        "hearts": m.lot.hearts,
-                        "bids_count": m.lot.bids_count,
-                        "ended_at": str(m.lot.ended_at),
-                        "score": round(m.score, 3),
-                        "url": m.lot.url,
-                    }
-                    for m in raw_matches
-                ]
-
-                d = eval_res.decision
-                c = eval_res.chart
-                self._send_json(200, {
-                    "decision": {
-                        "verdict": d.verdict.value,
-                        "max_buy_cost_vnd": d.max_buy_cost_vnd,
-                        "sample_size": d.sample_size,
-                        "sell_through_rate": d.sell_through_rate,
-                        "median_days_to_close": d.median_days_to_close,
-                        "heart_to_hammer_rate": d.heart_to_hammer_rate,
-                        "net_p25_eur": d.net_p25_eur,
-                        "net_median_eur": d.net_median_eur,
-                        "net_p75_eur": d.net_p75_eur,
-                        "reason": d.reason,
-                        "threshold_eur": d.threshold_eur,
-                    },
-                    "chart": {
-                        "hammer_prices_eur": list(c.hammer_prices_eur),
-                        "input_hammer_eur": c.input_hammer_eur,
-                        "cycle_position": c.cycle_position,
-                        "heart_acceleration_rate": c.heart_acceleration_rate,
-                    },
-                    "comparables": comparables,
-                    "eur_vnd_rate": settings.eur_vnd_rate,
-                })
-        except CutiError as exc:
-            self._send_json(422, {"error": str(exc)})
+    def log_message(self, format: str, *args: object) -> None:
+        sys.stderr.write("[CUTI API] " + (format % args) + "\n")
 
 
-def run_server(port: int = 8000, host: str = "0.0.0.0") -> None:
+def run_server(port: int = 8000, host: str = "127.0.0.1") -> None:
     """Start the CUTI REST API server."""
-    server_address = (host, port)
-    httpd = HTTPServer(server_address, CutiApiHandler)
-    print(f"[CUTI API] Server running on http://{host}:{port}")
+    load_settings()
+    httpd = ThreadingHTTPServer((host, port), CutiApiHandler)
+    print(f"[CUTI API] Server running on http://{host}:{port}", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\n[CUTI API] Server shutting down...")
+        print("\n[CUTI API] Server shutting down...", flush=True)
         httpd.server_close()
 
 
 if __name__ == "__main__":
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
-    run_server(port=port)
+    run_server(port=int(sys.argv[1]) if len(sys.argv) > 1 else 8000)

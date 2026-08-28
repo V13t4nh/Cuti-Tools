@@ -89,6 +89,12 @@ class CatawikiApi:
         payload = self._get(f"/buyer/api/v1/lots?ids={','.join(ids)}")
         return {item.lot_id: item for item in parse_lot_titles(payload)}
 
+    def covers(self, lot_ids: Iterable[str]) -> dict[str, str | None]:
+        """Resolve exact lot covers through the existing lot-details endpoint."""
+        requested = tuple(lot_ids)
+        items = self.titles(requested)
+        return {lot_id: items[lot_id].image_url if lot_id in items else None for lot_id in requested}
+
     def outcome(self, lot_id: str) -> BiddingOutcome:
         payload = self._get(
             f"/buyer/api/v3/lots/{lot_id}/bidding_block?currency_code={CURRENCY}"

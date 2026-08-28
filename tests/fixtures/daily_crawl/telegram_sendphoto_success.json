@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "result": {
+    "message_id": 9001,
+    "photo": [
+      {
+        "file_id": "fake-photo-small",
+        "file_unique_id": "fake-photo-small-unique"
+      },
+      {
+        "file_id": "fake-photo-cover",
+        "file_unique_id": "fake-photo-cover-unique"
+      }
+    ]
+  }
+}

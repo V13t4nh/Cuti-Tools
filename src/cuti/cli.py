@@ -29,7 +29,7 @@ from .pipeline import (
     watch_live,
 )
 from .report import write_report
-from .storage import connect, count_rows, fetch_quote_audit, outbox_counts
+from .storage import assess_data_freshness, connect, count_rows, fetch_quote_audit, outbox_counts
 from .pipeline.details import build_lot_url
 from .scrapers.catawiki_lot_page import parse_lot_page
 
@@ -63,6 +63,7 @@ def run(argv: Sequence[str] | None = None) -> int:
         "watch_live": watch_live,
         "build_notifier": build_notifier,
         "outbox_counts": outbox_counts,
+        "assess_data_freshness": assess_data_freshness,
         "write_report": write_report,
     }
     with connect(settings.db_path) as conn:

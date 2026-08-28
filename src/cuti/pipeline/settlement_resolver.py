@@ -77,6 +77,7 @@ def _typed_values(mapping: Mapping[str, Any], rules: Rules) -> tuple[dict[str, l
         if field == "brand":
             alias = normalize_text(str(raw_value))
             value = rules.brand_aliases.get(alias)
+            needs_review |= int(bool(alias) and value is None)
         elif field in {"model", "ref_number", "caliber", "case_code"}:
             value = _text(raw_value)
         elif field == "movement":
@@ -90,16 +91,16 @@ def _typed_values(mapping: Mapping[str, Any], rules: Rules) -> tuple[dict[str, l
             needs_review |= int(bool(normalized) and normalized not in {"steel", "gold", "gold plated", "titanium", "other"})
             value = {"gold plated": "gold_plated"}.get(value, value)
         elif field == "case_diameter_mm":
+            normalized = normalize_text(str(raw_value)) if raw_value is not None else ""
             try:
                 number = int(float(str(raw_value).lower().replace("mm", "").strip()))
             except (TypeError, ValueError):
                 number = None
             value = number if number is not None and 15 <= number <= 60 else None
+            needs_review |= int(bool(normalized) and value is None)
         if value is not None:
             result[field].append(value)
     return result, needs_review
-
-
 def _parse_text(text: str | None, rules: Rules) -> dict[str, list[Any]]:
     result: dict[str, list[Any]] = {field: [] for field in _FIELDS}
     if not text or not text.strip():
@@ -123,8 +124,6 @@ def _parse_text(text: str | None, rules: Rules) -> dict[str, list[Any]]:
     if value:
         result["caliber"].append(value)
     return result
-
-
 def _derive_source(values: dict[str, list[Any]], text: str, rules: Rules) -> dict[str, list[Any]]:
     """Derive identity facets per source before precedence/conflict merging."""
     brands = values.get("brand", [])
@@ -137,12 +136,8 @@ def _derive_source(values: dict[str, list[Any]], text: str, rules: Rules) -> dic
         if parts.case_code is not None:
             values["case_code"].append(parts.case_code)
     return values
-
-
 def _canonical(value: Any) -> str:
     return re.sub(r"[\s-]+", "", normalize_text(str(value)))
-
-
 def _merge_sources(sources: list[tuple[int, dict[str, list[Any]]]]) -> tuple[dict[str, Any], int, set[str]]:
     selected: dict[str, Any] = {}
     review = 0
@@ -180,20 +175,25 @@ def _merge_sources(sources: list[tuple[int, dict[str, list[Any]]]]) -> tuple[dic
             review = 1
     return selected, review, blocked
 
-
 def _identity(
     values: dict[str, Any], title: str, description: str | None, rules: Rules, blocked: set[str]
-) -> None:
+) -> dict[str, str]:
     """Apply configured reference rules after source precedence is resolved."""
+    derived: dict[str, str] = {}
     ref = values.get("ref_number")
     brand = normalize_text(str(values.get("brand") or ""))
     if not ref or not brand:
-        return
+        return derived
     parts = split_identity(brand, str(ref), title=title, description=description or "", rules=rules)
     if "caliber" not in blocked:
-        values["caliber"] = values.get("caliber") or parts.caliber
+        if values.get("caliber") is None and parts.caliber is not None:
+            values["caliber"] = parts.caliber
+            derived["caliber"] = "identity_rule"
     if "case_code" not in blocked:
-        values["case_code"] = values.get("case_code") or parts.case_code
+        if values.get("case_code") is None and parts.case_code is not None:
+            values["case_code"] = parts.case_code
+            derived["case_code"] = "identity_rule"
+    return derived
 
 
 def resolve_typed_fields(
@@ -220,9 +220,11 @@ def resolve_typed_fields(
     sources = [(4, override), (3, details_values), (2, title_values), (2, description_values), (1, ai_values)]
     values, review, blocked = _merge_sources(sources)
     review |= override_review | details_review | ai_review
-    _identity(values, title, description, rules, blocked)
+    derived_fields = _identity(values, title, description, rules, blocked)
     model_key, tier = _model_key(values, title)
     specs = {"model_key_tier": tier}
+    if derived_fields:
+        specs["derived_fields"] = derived_fields
     if isinstance(raw_details, Mapping) and raw_details:
         specs["details"] = dict(raw_details)
     return ResolvedFields(model_key=model_key, model_key_tier=tier, needs_review=review, specs=specs, **values)

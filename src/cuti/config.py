@@ -8,6 +8,7 @@ normalization is declared once in that table.
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 from datetime import timedelta, timezone
 from pathlib import Path
 from typing import Mapping
@@ -75,14 +76,12 @@ def load_settings(env: Mapping[str, str] | None = None, base_dir: Path | str | N
         raise ConfigError(f"{HOME_VAR}: {base} is not a directory")
     values = _resolve_values(env, base)
     converted = {spec.attr: _convert(spec, values[spec.name], base) for spec in SETTING_SPECS}
-    if converted["notifier"] == "telegram" and not (converted["telegram_bot_token"] and converted["telegram_chat_id"]):
+    if converted["notifier"] == "telegram" and not (converted["telegram_bot_token"] and (converted["telegram_chat_id"] or converted["telegram_channel_id"])):
         raise ConfigError("CUTI_NOTIFIER=telegram requires CUTI_TELEGRAM_BOT_TOKEN and CUTI_TELEGRAM_CHAT_ID")
     weights = tuple(converted[key] for key in ("liquidity_w_sell_through", "liquidity_w_speed", "liquidity_w_hearts"))
     if abs(sum(weights) - 1.0) > 1e-9:
         raise ConfigError(f"CUTI_LIQUIDITY_W_*: weights must sum to 1.0, got {sum(weights):.4f}")
     settings = Settings(base_dir=base, **converted)
-    if settings.total_fee_multiplier >= 1.0:
-        raise ConfigError("CUTI_COMMISSION_RATE and CUTI_VAT_ON_COMMISSION_RATE produce fees >= hammer price")
     writable = {
         "CUTI_DB_PATH": settings.db_path,
         "CUTI_NOTIFIER_FILE_PATH": settings.notifier_file_path,
@@ -94,4 +93,5 @@ def load_settings(env: Mapping[str, str] | None = None, base_dir: Path | str | N
     collisions = [names for names in by_path.values() if len(names) > 1]
     if collisions:
         raise ConfigError("output paths must be distinct: " + "; ".join(" = ".join(names) for names in collisions))
-    return settings
+    from .config_pricing_store import load_pricing_profile
+    return replace(settings, pricing_profile=load_pricing_profile(settings))

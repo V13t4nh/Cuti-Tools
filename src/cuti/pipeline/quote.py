@@ -109,18 +109,20 @@ def quote_watch(
         alert_payload = _alert_payload(
             deal, model_key=classification.model_key, condition=effective_condition, form=form, price=price
         )
+    pricing = settings.pricing_profile.values
     assumptions = {
         "audit_version": 2,
+        "pricing_profile": settings.pricing_profile.public(),
         "today": today.isoformat(),
         "comparable_window_days": settings.comparable_window_days,
         "match_threshold": settings.match_threshold,
         "min_comparables": settings.min_comparables,
-        "commission_rate": settings.commission_rate,
-        "vat_on_commission_rate": settings.vat_on_commission_rate,
-        "shipping_eur": settings.shipping_eur,
-        "eur_vnd_rate": settings.eur_vnd_rate,
-        "min_margin_rate": settings.min_margin_rate,
-        "min_profit_eur": settings.min_profit_eur,
+        "commission_rate": pricing["commission_rate"],
+        "vat_on_commission_rate": pricing["vat_on_commission_rate"],
+        "shipping_eur": pricing["shipping_eur"],
+        "eur_vnd_rate": pricing["eur_vnd_rate"],
+        "min_margin_rate": pricing["min_margin_rate"],
+        "min_profit_eur": pricing["min_profit_eur"],
         "rules_sha256": _rules_fingerprint(settings),
     }
     quote_id = insert_quote(

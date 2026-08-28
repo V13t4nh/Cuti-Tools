@@ -1,0 +1,26 @@
+{
+  "name": "cuti-terminal",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "python ../scripts/run_frontend.py dev",
+    "dev:ui": "vite --host 127.0.0.1",
+    "preview": "python ../scripts/run_frontend.py preview",
+    "preview:ui": "vite preview --host 127.0.0.1",
+    "typecheck": "vue-tsc --noEmit",
+    "lint": "vue-tsc --noEmit",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "5.3.0",
+    "@fontsource/ibm-plex-sans": "5.3.0",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0",
+    "vue-tsc": "^2.2.0"
+  }
+}

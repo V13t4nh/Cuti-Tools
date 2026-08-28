@@ -8,6 +8,7 @@ not state.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -17,6 +18,7 @@ from pathlib import Path
 from support import settings_for
 
 from cuti import storage
+from cuti.errors import ScrapeError
 from cuti.models import Condition, Lot, WatchForm
 from cuti.normalize import load_rules
 from cuti.pipeline import (
@@ -30,6 +32,7 @@ from cuti.scrapers import catawiki_api as api
 # The temp project dir has no config/, so point at the repository rules file:
 # classification must be exercised against the real rules, not a fixture.
 RULES_PATH = str(Path(__file__).resolve().parents[1] / "config" / "rules.json")
+REPEATED_SEARCH_FIXTURE = Path(__file__).with_name("fixtures") / "catawiki_search_pages_100_101.json"
 NOW = datetime(2026, 8, 17, 12, 0, tzinfo=timezone.utc)
 TODAY = date(2026, 8, 17)
 ROLEX = "Rolex - Submariner Date - 16610 - Men - full set"
@@ -186,6 +189,75 @@ class WatchLiveTests(LiveWatchTestCase):
             self.assertEqual(report.windows_unknown, 1)
             due = storage.fetch_live_watch_due(conn, until=TODAY, limit=10)
             self.assertEqual([row.lot_id for row in due], ["1"])
+
+    def test_repeated_page_stops_before_the_search_cap(self) -> None:
+        settings = settings_for(
+            self.tmp,
+            CUTI_RULES_PATH=RULES_PATH,
+            CUTI_CATAWIKI_QUERIES="watch",
+            CUTI_CATAWIKI_SEARCH_MAX_PAGES="150",
+            CUTI_CATAWIKI_BATCH_SIZE="100",
+            CUTI_CATAWIKI_PAUSE_SECONDS="0",
+        )
+        fixture = json.loads(REPEATED_SEARCH_FIXTURE.read_text(encoding="utf-8"))
+        observed_pages = {
+            record["page"]: api.SearchPage(
+                total=record["reported_total"],
+                lots=tuple(ref(lot_id, ROLEX) for lot_id in record["ordered_lot_ids"]),
+            )
+            for record in fixture["pages"]
+        }
+        self.assertEqual(sorted(observed_pages), [100, 101])
+        self.assertEqual(
+            tuple(item.lot_id for item in observed_pages[100].lots),
+            tuple(item.lot_id for item in observed_pages[101].lots),
+        )
+        pages = {
+            ("watch", page): api.SearchPage(
+                total=observed_pages[100].total,
+                lots=(ref(f"999999{page:03d}", ROLEX),),
+            )
+            for page in range(1, 100)
+        }
+        pages.update({("watch", page): value for page, value in observed_pages.items()})
+        fake = FakeApi(pages=pages)
+        with storage.connect(settings.db_path) as conn:
+            report = watch_live(conn, settings, NOW, api=fake)
+            self.assertEqual((report.pages_fetched, report.lots_seen), (101, 124))
+            self.assertEqual(report.requests_made, 103, "101 searches plus two state batches")
+
+    def test_repeated_page_does_not_hide_conflicting_cover_url(self) -> None:
+        first = api.LotRef("1", ROLEX, None, "https://www.catawiki.com/en/l/1-lot", "https://img/1")
+        conflicting = api.LotRef("1", ROLEX, None, "https://www.catawiki.com/en/l/1-lot", "https://img/2")
+        fake = FakeApi(
+            pages={
+                ("watch", 1): api.SearchPage(total=1, lots=(first,)),
+                ("watch", 2): api.SearchPage(total=1, lots=(conflicting,)),
+            }
+        )
+        with storage.connect(self.settings.db_path) as conn:
+            with self.assertRaisesRegex(ScrapeError, "conflicting cover URLs"):
+                watch_live(conn, self.settings, NOW, api=fake)
+
+    def test_overlapping_but_different_pages_continue_paging(self) -> None:
+        settings = settings_for(
+            self.tmp,
+            CUTI_RULES_PATH=RULES_PATH,
+            CUTI_CATAWIKI_QUERIES="watch",
+            CUTI_CATAWIKI_SEARCH_MAX_PAGES="5",
+            CUTI_CATAWIKI_BATCH_SIZE="2",
+            CUTI_CATAWIKI_PAUSE_SECONDS="0",
+        )
+        fake = FakeApi(
+            pages={
+                ("watch", 1): api.SearchPage(total=3, lots=(ref("1", ROLEX), ref("2", OMEGA))),
+                ("watch", 2): api.SearchPage(total=3, lots=(ref("2", OMEGA), ref("3", ROLEX))),
+            }
+        )
+        with storage.connect(settings.db_path) as conn:
+            report = watch_live(conn, settings, NOW, api=fake)
+            self.assertEqual((report.pages_fetched, report.lots_seen), (3, 3))
+            self.assertEqual(report.requests_made, 5, "two non-identical pages, one empty page, plus two state batches")
 
     def test_batches_live_state_lookups(self) -> None:
         lots = tuple(ref(str(index), ROLEX) for index in range(1, 6))

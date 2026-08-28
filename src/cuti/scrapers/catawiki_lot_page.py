@@ -7,8 +7,8 @@ import re
 from dataclasses import dataclass
 from html.parser import HTMLParser
 
+from ..errors import ScrapeError
 from ..normalize import Rules
-
 @dataclass(frozen=True, slots=True)
 class LotDetails:
     """Typed Details fields plus source text retained for later resolution."""
@@ -44,7 +44,6 @@ _LABELS = {
     "diameter": "case_diameter_mm",
 }
 _DIAMETER_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*mm\b", re.IGNORECASE)
-
 def _label(value: str) -> str:
     return " ".join(value.lower().replace(":", " ").split())
 
@@ -53,7 +52,6 @@ def _clean(value: str | None) -> str | None:
         return None
     value = " ".join(value.split())
     return value or None
-
 
 class _PageParser(HTMLParser):
     def __init__(self) -> None:
@@ -68,16 +66,13 @@ class _PageParser(HTMLParser):
         self.items: list[str] = []
         self._item_depth = 0
         self._item: list[str] = []
-
     @staticmethod
     def _attrs(attrs: list[tuple[str, str | None]]) -> dict[str, str]:
         return {key.lower(): (value or "") for key, value in attrs}
-
     @staticmethod
     def _is_description(attrs: dict[str, str]) -> bool:
         marker = " ".join(attrs.get(key, "") for key in ("class", "id", "data-testid", "itemprop")).lower()
         return "description" in marker or marker.strip() == "desc"
-
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attributes = self._attrs(attrs)
         marker = " ".join(attributes.get(key, "") for key in ("class", "id", "data-testid")).lower()
@@ -136,8 +131,6 @@ def _movement(value: str | None) -> str | None:
     if any(token in text for token in ("manual", "hand-wound", "hand wound", "handwound")):
         return "manual"
     return "auto" if any(token in text for token in ("automatic", "auto", "self-winding", "self winding")) else None
-
-
 def _material(value: str | None) -> str | None:
     text = (value or "").lower()
     if not text:
@@ -160,29 +153,37 @@ def _diameter(value: str | None) -> int | None:
         return int(result) if result.is_integer() and 15 <= result <= 60 else None
     except ValueError:
         return None
-
-
 def _next_data_specs(html: str) -> tuple[dict[str, str], str | None]:
     match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
     if not match:
         return {}, None
     try:
         data = json.loads(match.group(1))
-        details_data = data.get("props", {}).get("pageProps", {}).get("lotDetailsData") or {}
+    except json.JSONDecodeError as exc:
+        raise ScrapeError("__NEXT_DATA__ is not valid JSON") from exc
+    try:
+        details_data = data["props"]["pageProps"].get("lotDetailsData") or {}
+        specifications = details_data.get("specifications", [])
+        if not isinstance(details_data, dict) or not isinstance(specifications, list):
+            raise TypeError
         specs: dict[str, str] = {}
-        for item in details_data.get("specifications", []):
+        for item in specifications:
             label = item.get("label") or item.get("name")
             value = item.get("value") or item.get("displayValue")
-            if label and value:
+            if label is not None and value is not None:
                 specs[str(label)] = str(value)
         desc = details_data.get("description")
-        return specs, desc if isinstance(desc, str) else None
-    except Exception:
-        return {}, None
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise ScrapeError("__NEXT_DATA__ has an invalid lotDetailsData shape") from exc
+    if desc is not None and not isinstance(desc, str):
+        raise ScrapeError("lotDetailsData.description must be a string")
+    return specs, desc
 
 
 def parse_lot_page(html: str, *, rules: Rules | None = None) -> LotDetails:
     """Parse one lot page; absent or unrecognised fields remain ``None``."""
+    if not html.strip():
+        raise ScrapeError("lot page is empty")
     next_specs, next_desc = _next_data_specs(html)
     parser = _PageParser()
     parser.feed(html)

@@ -147,4 +147,59 @@ CREATE TABLE IF NOT EXISTS alert_outbox (
     sent_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_status ON alert_outbox(status, created_at);
+
+-- Canonical product identity is configuration/catalog data, not an auction lot.
+CREATE TABLE IF NOT EXISTS canonical_products (
+    product_id TEXT PRIMARY KEY,
+    canonical_name TEXT NOT NULL,
+    brand TEXT NOT NULL,
+    reference TEXT NOT NULL,
+    model_key TEXT NOT NULL,
+    aliases_json TEXT NOT NULL,
+    provenance TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_products_reference ON canonical_products(brand, reference);
+
+CREATE TABLE IF NOT EXISTS saved_products (
+    product_id TEXT PRIMARY KEY REFERENCES canonical_products(product_id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tracked_deals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id TEXT NOT NULL REFERENCES canonical_products(product_id),
+    ask_amount REAL NOT NULL,
+    currency TEXT NOT NULL CHECK (currency IN ('vnd', 'eur')),
+    condition_tag TEXT NOT NULL CHECK (condition_tag IN ('naked', 'box', 'papers', 'fullset')),
+    status TEXT NOT NULL DEFAULT 'considering'
+        CHECK (status IN ('considering', 'purchased', 'skipped')),
+    snapshot_json TEXT NOT NULL,
+    dedupe_hash TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tracked_deals_status ON tracked_deals(status, updated_at);
+CREATE INDEX IF NOT EXISTS idx_tracked_deals_product ON tracked_deals(product_id, created_at);
+
+CREATE TABLE IF NOT EXISTS lot_images (
+    lot_id TEXT NOT NULL,
+    idx INTEGER NOT NULL DEFAULT 0,
+    source_url TEXT NOT NULL,
+    telegram_file_id TEXT,
+    telegram_file_path TEXT,
+    telegram_message_id INTEGER,
+    uploaded_at TEXT,
+    state TEXT NOT NULL DEFAULT 'queued'
+        CHECK (state IN ('queued', 'uploading', 'ready', 'retryable_error', 'permanent_error')),
+    attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    last_error TEXT,
+    next_attempt_at TEXT,
+    lease_owner TEXT,
+    lease_expires_at TEXT,
+    PRIMARY KEY (lot_id, idx)
+);
+CREATE INDEX IF NOT EXISTS idx_lot_images_lot ON lot_images(lot_id);
+CREATE INDEX IF NOT EXISTS idx_lot_images_queue
+    ON lot_images(state, next_attempt_at, lease_expires_at, lot_id, idx);
 """

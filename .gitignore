@@ -53,10 +53,12 @@ coverage.xml
 .DS_Store
 Thumbs.db
 
-# Node and Next.js
+# Node frontends and generated builds
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
 web/node_modules/
 web/.next/
 web/out/
 web/*.tsbuildinfo
 web/next-env.d.ts
-

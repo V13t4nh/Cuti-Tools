@@ -1,0 +1,116 @@
+{
+  "valid": true,
+  "active_revision": "857a70c2b649d21b8fe65e1f21fcebf744773afdc76ee64d71660a258046ef1c",
+  "draft": {
+    "parameters": [
+      {
+        "name": "commission_rate",
+        "value": 0.125,
+        "unit": "rate",
+        "required": true,
+        "removable": false
+      },
+      {
+        "name": "vat_on_commission_rate",
+        "value": 0.21,
+        "unit": "rate",
+        "required": true,
+        "removable": false
+      },
+      {
+        "name": "shipping_eur",
+        "value": 35.0,
+        "unit": "eur",
+        "required": true,
+        "removable": false
+      },
+      {
+        "name": "eur_vnd_rate",
+        "value": 27000.0,
+        "unit": "vnd_per_eur",
+        "required": true,
+        "removable": false
+      },
+      {
+        "name": "min_margin_rate",
+        "value": 0.15,
+        "unit": "rate",
+        "required": true,
+        "removable": false
+      },
+      {
+        "name": "min_profit_eur",
+        "value": 50.0,
+        "unit": "eur",
+        "required": true,
+        "removable": false
+      },
+      {
+        "name": "packing_eur",
+        "value": 15.0,
+        "unit": "eur",
+        "required": false,
+        "removable": true
+      }
+    ],
+    "helpers": [
+      {
+        "name": "total_fee_multiplier",
+        "expression": "commission_rate * (1 + vat_on_commission_rate)"
+      }
+    ],
+    "formulas": {
+      "net_proceeds": "hammer_eur - hammer_eur * total_fee_multiplier - shipping_eur - cost_eur - packing_eur",
+      "profit_threshold": "max(cost_eur * min_margin_rate, min_profit_eur)"
+    }
+  },
+  "preview": {
+    "outputs": [
+      {
+        "name": "net_proceeds",
+        "label": "Lợi nhuận ròng",
+        "value": 698.75,
+        "unit": "eur",
+        "formatted": "698.75 EUR"
+      },
+      {
+        "name": "profit_threshold",
+        "label": "Ngưỡng lợi nhuận",
+        "value": 50.0,
+        "unit": "eur",
+        "formatted": "50.00 EUR"
+      },
+      {
+        "name": "break_even_hammer",
+        "label": "Giá hòa vốn",
+        "value": 235.64064801178202,
+        "unit": "eur",
+        "formatted": "235.64 EUR"
+      }
+    ],
+    "active_outputs": [
+      {
+        "name": "net_proceeds",
+        "label": "Lợi nhuận ròng",
+        "value": 713.75,
+        "unit": "eur",
+        "formatted": "713.75 EUR"
+      },
+      {
+        "name": "profit_threshold",
+        "label": "Ngưỡng lợi nhuận",
+        "value": 50.0,
+        "unit": "eur",
+        "formatted": "50.00 EUR"
+      },
+      {
+        "name": "break_even_hammer",
+        "label": "Giá hòa vốn",
+        "value": 217.96759941089837,
+        "unit": "eur",
+        "formatted": "217.97 EUR"
+      }
+    ]
+  },
+  "errors": []
+}

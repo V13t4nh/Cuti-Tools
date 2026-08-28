@@ -1,0 +1,135 @@
+COMMAND=inventory and SHA256 checksums for formula configuration likely touch points
+WORKDIR=D:\Projects\cuti-tools
+GIT_HEAD_BEGIN
+035e5c06ddcc21357a81beb9cc9e901697a8a5d4
+2026-08-25T12:06:26+07:00
+fix(web): remove overflowing floating badge on gauge and replace with sleek integrated cursor
+GIT_HEAD_END
+GIT_STATUS_BEGIN
+ M .env.example
+ M .gitignore
+ M README.md
+ M notion.md
+ M scripts/generate_sample_data.py
+ M scripts/run_scheduled_crawl.py
+ M src/cuti/app.py
+ M src/cuti/cli.py
+ M src/cuti/cli_commands.py
+ M src/cuti/cli_parser.py
+ M src/cuti/config.py
+ M src/cuti/config_specs.py
+ M src/cuti/config_types.py
+ M src/cuti/errors.py
+ M src/cuti/pipeline/details.py
+ M src/cuti/pipeline/report.py
+ M src/cuti/pipeline/settlement.py
+ M src/cuti/pipeline/settlement_resolver.py
+ M src/cuti/scrapers/catawiki_api.py
+ M src/cuti/scrapers/catawiki_lot_page.py
+ M src/cuti/scrapers/catawiki_payload.py
+ M src/cuti/server.py
+ M src/cuti/storage/__init__.py
+ M src/cuti/storage/quotes.py
+ M src/cuti/storage/schema.py
+ M src/cuti/storage/schema_ddl.py
+ M src/cuti/storage/schema_migration.py
+ M src/cuti/storage/watch.py
+ M src/cuti/ui_tabs.py
+ M src/cuti/ui_theme.py
+ M src/cuti/ui_views.py
+ M tests/test_live_details.py
+ M tests/test_live_watch.py
+ D web/next.config.mjs
+ D web/package-lock.json
+ D web/package.json
+ D web/postcss.config.mjs
+ D web/src/app/globals.css
+ D web/src/app/layout.tsx
+ D web/src/app/liquidity/page.tsx
+ D web/src/app/live/page.tsx
+ D web/src/app/page.tsx
+ D web/src/components/BreakEvenChart.tsx
+ D web/src/components/ComparablesTable.tsx
+ D web/src/components/DealInputForm.tsx
+ D web/src/components/Header.tsx
+ D web/src/components/Icons.tsx
+ D web/src/components/KpiMetrics.tsx
+ D web/src/components/ProfitCards.tsx
+ D web/src/components/VerdictHero.tsx
+ D web/src/lib/api.ts
+ D web/src/lib/formatters.ts
+ D web/src/lib/types.ts
+ D web/tailwind.config.ts
+ D web/tsconfig.json
+?? DESIGN.md
+?? config/catalog.json
+?? docs/
+?? frontend/
+?? scripts/process_lock.py
+?? scripts/run_daily.py
+?? scripts/run_frontend.py
+?? scripts/run_image_worker.py
+?? specs/
+?? src/cuti/api.py
+?? src/cuti/daily.py
+?? src/cuti/storage/catalog.py
+?? src/cuti/storage/freshness.py
+?? src/cuti/storage/media.py
+?? src/cuti/storage/user_items.py
+?? src/cuti/telegram_media.py
+?? tests/daily_crawl_harness.py
+?? tests/daily_process_integration_t2.py
+?? tests/fixtures/catawiki_search_pages_100_101.json
+?? tests/fixtures/daily_crawl/
+?? tests/test_daily_crawl_queue_regressions.py
+?? tests/test_daily_launcher_regressions.py
+?? tests/test_daily_reconciliation_regressions.py
+?? tests/test_daily_storage_regressions.py
+?? tests/test_media_vault.py
+GIT_STATUS_END
+CHECKSUMS_BEGIN count=43
+3B4995320E20600B5F64445997B34E959BFE564103379BB8EDEB593EB477DD2F 130 AGENTS.md
+8757B46CA301C25029E7DD8D0D400C8DFBA32E9A0B5F6A08913A25CA154E65F2 15 config\catalog.json
+364779655E3237F71A3787E0343FE4F3A2A6751FDBF2A46F3BDFA649A745F45E 60 config\rules.json
+115D61A28D47262E0494025A72F50409A1626750130B6D35808EFCCC970DEFA0 1578 frontend/package-lock.json
+D531737D69D21F3C5450F9B714D7919B2185768B061BBCF8D6B23298BDAC1D3F 26 frontend/package.json
+3EEAD3B775ADA6C3BEDB3522624785D088C6BB900A37281EC4B5738AB16640F3 34 frontend/src/api.ts
+46C7AB175E38A3452C12FD93766DF48B423F90CA9C4B6980AE510A24C8E21B60 1203 frontend/src/App.vue
+B02248C1178EC0219A351C3500D660CEC1BC0DAED45C73F9D0F62940748AC29C 10 frontend/src/types.ts
+3EEAD3B775ADA6C3BEDB3522624785D088C6BB900A37281EC4B5738AB16640F3 34 frontend/src\api.ts
+46C7AB175E38A3452C12FD93766DF48B423F90CA9C4B6980AE510A24C8E21B60 1203 frontend/src\App.vue
+388B3F04B8322E5E64BC386E692ECDEF7D3D0F5C452340F3B164A330136DA0EB 97 frontend/src\components\AppIcon.vue
+93DA3322961C507FD712FDFABC2EAE9D1306A428C3604738C9D03BC4A6EA1806 9 frontend/src\main.ts
+6996054CA904E9E878A032C5183A00453081A77B269079DD887F6FC1677CE083 1739 frontend/src\styles.css
+B02248C1178EC0219A351C3500D660CEC1BC0DAED45C73F9D0F62940748AC29C 10 frontend/src\types.ts
+5967A6B99C6B9DC2CD495E9FEE49DB42438D91E1C66CEB9FECBA44ECB1230FEF 447 notion.md
+D49BBA55CA8232FC66307BC5877B010D13872A3B675D0D04815A7FC4ADEF6381 22 pyproject.toml
+3C2A57BB80C8121D0871CBB5AACA959596A6A101E9A7A337F214B44496D47AF3 291 README.md
+0F6CA7C2487DC93AF6A1759F6D30C0FDE3545A7D1686CA307375D2347C8F9BD1 3 requirements.txt
+2C8A7CD3CD8033207C89362A8CD959AC6535F5C4F2C404E484D4F48DEAB488F9 31 specs\features\auction-lot-discovery.md
+D8978CFAAA8303AB700742BE1756A783AD7A176FB4573DF10C1457DA9B4AC7E5 72 specs\features\daily-crawl-and-images.md
+21A9DB3A7D5DDA5AB73D8BAD5A4C54995BE0688D97FCE7F6C9F96FC7C47D3374 41 specs\features\liquidity-market.md
+824EF00AA9585ED53675F887C9B9F63AAA22B00C61B227DF85A4E29B3BD521B1 53 specs\features\product-search.md
+E3745C04677FA03F5BBD71AC6A4B3EF20EFE3F41711C9D8CC0B1BB400E4C3193 44 specs\features\saved-items.md
+891D2B9CBB1D6C76D97E7548D8721D99ACF1595993411AFF2C8A719C46A792C4 103 specs\formula-config.md
+525D5556290EED6A170A4E7E00D53ADE867FD5CAFE77C38123B078EFCE33F024 39 specs\GLOBAL_UX_RULES.md
+8022317AB754AEAF613974D513C6D9B890AB7622FDEE5760D7D5E802B1D1C550 51 specs\IA.md
+3F9D2FBB96E9B45B5B835B77DCD52246A8680901E484F97204D5F509FA49F6A0 74 specs\journeys\assessment.md
+89FF387849F898A6A78ACC09B0F34F88708025D1F00F3DF5F06A9D6F3EB51C09 84 specs\MOTION_CONTRACT.md
+A1F0D25870070085FAD5A256856C54CDBDE054777C6285CB0724875FE69967C7 27 specs\README.md
+FE9A2E2F479FC0A35D6DD11C49A28D8B5BDB6D0C9F5A927961D330D5648D3683 63 specs\RESPONSIVE_CONTRACT.md
+55FD1EC639D42B968EFCC8FDF72FB0653ACB49A44499DBE2BA8CA97A7019C995 74 specs\SCREEN_INVENTORY.md
+FF915C8200ACCAC0448A763A5A2376ACDA6CBC756DE88B8ADB2316C590F95DF3 90 specs\UX_CONTRACT.md
+1BD41020A39290729807383733A2BCACF660CB8494C66558DB922FAA62B89854 230 src/cuti/api.py
+188838ACC058972FDD4AFA7040FA1913F96C461BA4E9E5EB42B011445023BD6D 131 src/cuti/config_specs.py
+53A9C60928AD8CC3BD0EB2CB713A66CAA14E14972677FE20B941892E6DA2101E 70 src/cuti/config_types.py
+79A89880B2F549FAD715D906EEA70E72659E3276DCA8308DE9EF297948584FD0 84 src/cuti/config.py
+D1E7A0F9A03FC81E93273C7B6EBB8B12D4B9891EED803FCED12EE4350539A516 173 src/cuti/evaluation.py
+25A9DC172950CD84CD6245EF7F429E6B0618AF4DB430B961D25BA1890CDDB4B9 149 src/cuti/pipeline/quote.py
+AB70016112F108CDDEE007DE34BD3A839EB6A1DD35BABEAAAF1D8E9BA94DC119 31 src/cuti/price_limit.py
+D58C8A60346D94674CD6F672FADA189D841622B70E985159B3727DD321568F1B 154 src/cuti/pricing.py
+A5EF21424C2701AEB6539C1534B0E4048B87810E1D324F9B3C1EB4DC83B185B4 127 src/cuti/server.py
+14147E3C11769D90C0ECBC18B6DBA2E80035CEECF48FFBD1EBBA5E80F61F9FCC 191 src/cuti/storage/schema_ddl.py
+ED9A267A6DC3E627C2AC78CEE2F54B96B17C857EDC1D0BCE9E265F8DD45E553F 148 src/cuti/storage/schema.py
+CHECKSUMS_END
+EXIT=0

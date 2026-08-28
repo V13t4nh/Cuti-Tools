@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CUTI — Decision Terminal</title>
+    <script>
+      (() => {
+        const root = document.documentElement
+        let savedTheme = null
+        try { savedTheme = window.localStorage.getItem('cuti-theme') } catch { /* storage can be unavailable */ }
+        const theme = savedTheme === 'dark' || savedTheme === 'light'
+          ? savedTheme
+          : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+        root.dataset.theme = theme
+        root.style.colorScheme = theme
+      })()
+    </script>
+  </head>
+  <body><div id="app"></div><script type="module" src="/src/main.ts"></script></body>
+</html>

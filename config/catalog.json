@@ -1,0 +1,15 @@
+[
+  {"product_id":"omega:seamaster-diver-300m-210.30.42","canonical_name":"Omega Seamaster Diver 300M","brand":"omega","reference":"210.30.42","model_key":"omega:210.30.42","aliases":["Omega Seamaster Diver 300M 210.30.42","Omega Seamaster 210.30.42"],"provenance":"config/catalog.json"},
+  {"product_id":"omega:speedmaster-professional-311.30.42","canonical_name":"Omega Speedmaster Professional","brand":"omega","reference":"311.30.42","model_key":"omega:311.30.42","aliases":["Omega Speedmaster Professional 311.30.42","Omega Speedmaster 311.30.42"],"provenance":"config/catalog.json"},
+  {"product_id":"omega:constellation-131.12.41","canonical_name":"Omega Constellation","brand":"omega","reference":"131.12.41","model_key":"omega:131.12.41","aliases":["Omega Constellation 131.12.41"],"provenance":"config/catalog.json"},
+  {"product_id":"rolex:datejust-126234","canonical_name":"Rolex Datejust","brand":"rolex","reference":"126234","model_key":"rolex:126234","aliases":["Rolex Datejust 126234"],"provenance":"config/catalog.json"},
+  {"product_id":"rolex:submariner-124060","canonical_name":"Rolex Submariner","brand":"rolex","reference":"124060","model_key":"rolex:124060","aliases":["Rolex Submariner 124060"],"provenance":"config/catalog.json"},
+  {"product_id":"seiko:prospex-spb143","canonical_name":"Seiko Prospex","brand":"seiko","reference":"SPB143","model_key":"seiko:spb143","aliases":["Seiko Prospex SPB143"],"provenance":"config/catalog.json"},
+  {"product_id":"seiko:presage-srpb41","canonical_name":"Seiko Presage","brand":"seiko","reference":"SRPB41","model_key":"seiko:srpb41","aliases":["Seiko Presage SRPB41"],"provenance":"config/catalog.json"},
+  {"product_id":"tudor:black-bay-58-79030","canonical_name":"Tudor Black Bay 58","brand":"tudor","reference":"79030","model_key":"tudor:79030","aliases":["Tudor Black Bay 58 79030"],"provenance":"config/catalog.json"},
+  {"product_id":"longines:spirit-zulu-l3.812","canonical_name":"Longines Spirit Zulu","brand":"longines","reference":"L3.812","model_key":"longines:l3.812","aliases":["Longines Spirit Zulu L3.812"],"provenance":"config/catalog.json"},
+  {"product_id":"hamilton:khaki-field-h70455","canonical_name":"Hamilton Khaki Field","brand":"hamilton","reference":"H70455","model_key":"hamilton:h70455","aliases":["Hamilton Khaki Field H70455"],"provenance":"config/catalog.json"},
+  {"product_id":"oris:aquis-733","canonical_name":"Oris Aquis","brand":"oris","reference":"733","model_key":"oris:733","aliases":["Oris Aquis 733"],"provenance":"config/catalog.json"},
+  {"product_id":"tissot:prx-137","canonical_name":"Tissot PRX","brand":"tissot","reference":"137","model_key":"tissot:137","aliases":["Tissot PRX 137"],"provenance":"config/catalog.json"},
+  {"product_id":"citizen:tsuyosa-nj0150","canonical_name":"Citizen Tsuyosa","brand":"citizen","reference":"NJ0150","model_key":"citizen:nj0150","aliases":["Citizen Tsuyosa NJ0150"],"provenance":"config/catalog.json"}
+]

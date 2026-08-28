@@ -37,3 +37,7 @@ class PricingError(CutiError):
 
 class NotifierError(CutiError):
     """An alert could not be delivered."""
+
+
+class MediaUploadError(CutiError):
+    """A Telegram media upload could not be completed."""

@@ -157,7 +157,8 @@ def outbox_counts(conn: sqlite3.Connection) -> dict[str, int]:
 
 
 def count_rows(conn: sqlite3.Connection, table: str) -> int:
-    if table not in {"lots", "live_watch", "deals", "quotes", "quote_comparables", "alert_outbox"}:
+    if table not in {"lots", "live_watch", "deals", "quotes", "quote_comparables", "alert_outbox",
+                     "canonical_products", "saved_products", "tracked_deals"}:
         raise StorageError(f"unknown table {table!r}")
     return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 

@@ -21,6 +21,7 @@ from ..storage import (
     fetch_lots_for_source_check,
     mark_source_availability,
     upsert_live_watch,
+    upsert_live_watch_with_images,
 )
 from .details import build_lot_url, fetch_lot_page
 
@@ -42,6 +43,8 @@ class SettleReport:
     still_open: int
     vanished: int
     unclassified: int
+    details_failed: int
+    errors: tuple[str, ...]
     lots_written: int
     queue_remaining: int
     requests_made: int
@@ -52,91 +55,51 @@ class SourceCheckReport:
     alive: int
     dead: int
 
-def _lot_page_fetcher(
-    rows: list[LiveWatchRow], settings: Settings
-) -> Callable[[str], str | None]:
-    known_ids = {row.lot_id for row in rows}
-    requested = False
-
+def _lot_page_fetcher(rows: list[LiveWatchRow], settings: Settings) -> Callable[[str], str | None]:
+    known_ids, requested = {row.lot_id for row in rows}, False
     def fetch(lot_id: str) -> str | None:
         nonlocal requested
-        if not settings.details_enabled or lot_id not in known_ids:
-            return None
+        if not settings.details_enabled or lot_id not in known_ids: return None
         url = build_lot_url(settings.catawiki_api_base, lot_id)
-        if requested and settings.details_request_delay_seconds > 0:
-            time.sleep(settings.details_request_delay_seconds)
+        if requested and settings.details_request_delay_seconds > 0: time.sleep(settings.details_request_delay_seconds)
         requested = True
-        return fetch_lot_page(
-            url,
-            timeout_seconds=settings.http_timeout_seconds,
-            max_bytes=settings.response_max_bytes,
-            delay_seconds=settings.details_request_delay_seconds,
-            max_retries=settings.details_max_retries,
-            fetch=fetch_text,
-            sleep=time.sleep,
-        )
-
+        return fetch_lot_page(url, timeout_seconds=settings.http_timeout_seconds, max_bytes=settings.response_max_bytes,
+                              delay_seconds=settings.details_request_delay_seconds, max_retries=settings.details_max_retries,
+                              fetch=fetch_text, sleep=time.sleep)
     return fetch
 
+def _catawiki_client(settings: Settings, api: catawiki_api.CatawikiApi | None = None) -> catawiki_api.CatawikiApi:
+    return api if api is not None else catawiki_api.CatawikiApi(
+        api_base=settings.catawiki_api_base, timeout_seconds=settings.http_timeout_seconds,
+        max_bytes=settings.response_max_bytes, pause_seconds=settings.catawiki_pause_seconds)
 
-def _catawiki_client(
-    settings: Settings, api: catawiki_api.CatawikiApi | None = None
-) -> catawiki_api.CatawikiApi:
-    if api is not None:
-        return api
-    return catawiki_api.CatawikiApi(
-        api_base=settings.catawiki_api_base,
-        timeout_seconds=settings.http_timeout_seconds,
-        max_bytes=settings.response_max_bytes,
-        pause_seconds=settings.catawiki_pause_seconds,
-    )
-
-
-def watch_live(
-    conn: sqlite3.Connection,
-    settings: Settings,
-    now: datetime,
-    *,
-    api: catawiki_api.CatawikiApi | None = None,
-) -> WatchLiveReport:
+def watch_live(conn: sqlite3.Connection, settings: Settings, now: datetime, *, api: catawiki_api.CatawikiApi | None = None) -> WatchLiveReport:
     """Phase 1: record every lot that is open right now, with its close date."""
-    client = _catawiki_client(settings, api)
-    refs: dict[str, catawiki_api.LotRef] = {}
-    pages = 0
+    client = _catawiki_client(settings, api); refs: dict[str, catawiki_api.LotRef] = {}; pages = 0
     for query in settings.catawiki_queries:
+        previous_page_ids: tuple[str, ...] | None = None
         for page_number in range(1, settings.catawiki_search_max_pages + 1):
-            page = client.search(query, page_number)
-            pages += 1
-            if not page.lots:
-                break
+            page = client.search(query, page_number); pages += 1
+            if not page.lots: break
+            page_ids = tuple(ref.lot_id for ref in page.lots)
             for ref in page.lots:
+                previous = refs.get(ref.lot_id)
+                if previous is not None and previous.image_url != ref.image_url:
+                    raise ScrapeError(f"lot {ref.lot_id}: conflicting cover URLs in one crawl")
                 refs.setdefault(ref.lot_id, ref)
+            if page_ids == previous_page_ids: break
+            previous_page_ids = page_ids
     windows: dict[str, date] = {}
     for batch in catawiki_api.chunks(list(refs), settings.catawiki_batch_size):
         for lot_id, state in client.live_states(batch).items():
-            if not state.closed:
-                windows[lot_id] = state.ended_at
-    rows = [
-        LiveWatchRow(
-            lot_id=lot_id,
-            source=catawiki_api.SOURCE_NAME,
-            title=ref.title,
-            subtitle=ref.subtitle,
-            url=ref.url,
-            bidding_end_at=windows.get(lot_id),
-        )
-        for lot_id, ref in refs.items()
-    ]
-    tracked, refreshed = upsert_live_watch(conn, rows, now)
-    return WatchLiveReport(
-        queries=settings.catawiki_queries,
-        pages_fetched=pages,
-        lots_seen=len(rows),
-        lots_tracked=tracked,
-        lots_refreshed=refreshed,
-        windows_unknown=sum(row.bidding_end_at is None for row in rows),
-        requests_made=client.requests_made,
-    )
+            if not state.closed: windows[lot_id] = state.ended_at
+    rows = [LiveWatchRow(lot_id=lot_id, source=catawiki_api.SOURCE_NAME, title=ref.title, subtitle=ref.subtitle,
+                         url=ref.url, bidding_end_at=windows.get(lot_id)) for lot_id, ref in refs.items()]
+    image_urls = {lot_id: ref.image_url for lot_id, ref in refs.items() if ref.image_url}
+    tracked, refreshed = upsert_live_watch_with_images(conn, rows, image_urls, now)
+    return WatchLiveReport(queries=settings.catawiki_queries, pages_fetched=pages, lots_seen=len(rows),
+                           lots_tracked=tracked, lots_refreshed=refreshed,
+                           windows_unknown=sum(row.bidding_end_at is None for row in rows), requests_made=client.requests_made)
 
 
 def settle_lots(
@@ -161,6 +124,8 @@ def settle_lots(
         still_open=settlement.still_open,
         vanished=settlement.vanished,
         unclassified=settlement.unclassified,
+        details_failed=settlement.details_failed,
+        errors=tuple(settlement.errors),
         lots_written=written,
         queue_remaining=count_live_watch(conn),
         requests_made=client.requests_made,
@@ -203,6 +168,8 @@ def ingest_one_lot(
         still_open=settlement.still_open,
         vanished=settlement.vanished,
         unclassified=settlement.unclassified,
+        details_failed=settlement.details_failed,
+        errors=tuple(settlement.errors),
         lots_written=written,
         queue_remaining=count_live_watch(conn),
         requests_made=client.requests_made,

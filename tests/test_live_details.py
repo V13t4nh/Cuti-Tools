@@ -97,7 +97,7 @@ class DetailsPathTests(unittest.TestCase):
             self.assertEqual(json.loads(stored[1])["model_key_tier"], 2)
             self.assertIsNotNone(conn.execute("SELECT desc_z FROM lot_desc WHERE lot_id='1'").fetchone())
 
-    def test_permanent_details_error_keeps_lot_without_details(self) -> None:
+    def test_permanent_details_error_reports_failure_without_persisting_lot(self) -> None:
         settings = settings_for(self.root, CUTI_DETAILS_ENABLED="true")
         rules = load_rules(settings.rules_path)
         fetcher = _lot_page_fetcher([self.row], settings)
@@ -107,12 +107,17 @@ class DetailsPathTests(unittest.TestCase):
 
         with patch("cuti.pipeline.report.fetch_text", side_effect=permanent_fetch):
             settlement = settle(_ClosedApi(), rules, settings, [self.row], fetch_details=fetcher)
+        self.assertEqual(settlement.details_failed, 1)
+        self.assertEqual(settlement.errors, ["1: permanent details failure"])
+        self.assertEqual(settlement.lots, [])
         with storage.connect(settings.db_path) as conn:
-            persist(conn, settlement, datetime(2026, 8, 17, tzinfo=timezone.utc))
-            stored = conn.execute("SELECT model FROM lots WHERE lot_id='1'").fetchone()
-            self.assertIsNotNone(stored)
-            self.assertIsNone(stored[0])
+            now = datetime(2026, 8, 17, tzinfo=timezone.utc)
+            storage.upsert_live_watch(conn, [self.row], now)
+            written = persist(conn, settlement, now)
+            self.assertEqual(written, 0)
+            self.assertIsNone(conn.execute("SELECT model FROM lots WHERE lot_id='1'").fetchone())
             self.assertIsNone(conn.execute("SELECT desc_z FROM lot_desc WHERE lot_id='1'").fetchone())
+            self.assertIsNotNone(conn.execute("SELECT 1 FROM live_watch WHERE lot_id='1'").fetchone())
 
 
 if __name__ == "__main__":

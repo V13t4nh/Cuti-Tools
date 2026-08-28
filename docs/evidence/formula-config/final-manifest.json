@@ -1,0 +1,125 @@
+{
+  "baseline_snapshot": "docs/evidence/formula-config/baseline-snapshot.txt",
+  "baseline_source_text_available": false,
+  "files": [
+    {
+      "baseline_sha256": "79a89880b2f549fad715d906eea70e72659e3276dca8308de9ef297948584fd0",
+      "nonempty_lines": 84,
+      "path": "src/cuti/config.py",
+      "physical_lines": 97,
+      "sha256": "ed1f20b5c9de288254fd055edfc6fd163aaf662cc89945ca7a6016b85c4fa793"
+    },
+    {
+      "baseline_sha256": null,
+      "nonempty_lines": 164,
+      "path": "src/cuti/config_pricing.py",
+      "physical_lines": 185,
+      "sha256": "d3504ea94d04d18813aa839cf6f9154d5949eb8a925106bad3fe7929f93aff61"
+    },
+    {
+      "baseline_sha256": null,
+      "nonempty_lines": 95,
+      "path": "src/cuti/config_pricing_math.py",
+      "physical_lines": 111,
+      "sha256": "33c6cdef0fb69126cf7770296580ae2f677c6ec8562e1c5a63b4d61dde479d90"
+    },
+    {
+      "baseline_sha256": null,
+      "nonempty_lines": 94,
+      "path": "src/cuti/config_pricing_store.py",
+      "physical_lines": 108,
+      "sha256": "8c1a65bc978e3de98245c9277e53cb3f1792e3fcbe324d4d4a5848efcc46e367"
+    },
+    {
+      "baseline_sha256": null,
+      "nonempty_lines": 39,
+      "path": "src/cuti/config_pricing_units.py",
+      "physical_lines": 45,
+      "sha256": "ee23afda8c55514bc66ef9f549ffd50779e88068402e2e23cdc4bbd8898234f9"
+    },
+    {
+      "baseline_sha256": null,
+      "nonempty_lines": 62,
+      "path": "src/cuti/api_pricing.py",
+      "physical_lines": 81,
+      "sha256": "3183bccd779795519ff46bd882faf1ec0d467aaa9505809ad8d9590b09a9b301"
+    },
+    {
+      "baseline_sha256": "1bd41020a39290729807383733a2bcacf660cb8494c66558db922faa62b89854",
+      "nonempty_lines": 229,
+      "path": "src/cuti/api.py",
+      "physical_lines": 229,
+      "sha256": "454e2fe22c722b912ac76fc497beff37ac86fce45c3411f1455377c4e2360c5e"
+    },
+    {
+      "baseline_sha256": "a5ef21424c2701aeb6539c1534b0e4048b87810e1d324f9b3c1eb4dc83b185b4",
+      "nonempty_lines": 160,
+      "path": "src/cuti/server.py",
+      "physical_lines": 189,
+      "sha256": "f5bba24bace4beedad85514e88c35ee9fba0ac54712d8957b592f853d892f176"
+    },
+    {
+      "baseline_sha256": "d58c8a60346d94674cd6f672fada189d841622b70e985159b3727dd321568f1b",
+      "nonempty_lines": 162,
+      "path": "src/cuti/pricing.py",
+      "physical_lines": 198,
+      "sha256": "d14f319805159f78bc7348fdd27df66e89b264f68b68337c09db55a712244168"
+    },
+    {
+      "baseline_sha256": "25a9dc172950cd84cd6245ef7f429e6b0618af4db430b961d25ba1890cddb4b9",
+      "nonempty_lines": 151,
+      "path": "src/cuti/pipeline/quote.py",
+      "physical_lines": 162,
+      "sha256": "733df12059eb4cf2b3c53589cd77ee793464a86e611bfbb15512831450940a1a"
+    },
+    {
+      "baseline_sha256": "46c7ab175e38a3452c12fd93766df48b423f90ca9c4b6980ae510a24c8e21b60",
+      "nonempty_lines": 1247,
+      "path": "frontend/src/App.vue",
+      "physical_lines": 1356,
+      "sha256": "22e03aaed9e1a74ebf2680908034557cb8750996b553946db8a345e5c49e2ad3"
+    },
+    {
+      "baseline_sha256": "3eead3b775ada6c3bedb3522624785d088c6bb900a37281ec4b5738ab16640f3",
+      "nonempty_lines": 58,
+      "path": "frontend/src/api.ts",
+      "physical_lines": 61,
+      "sha256": "05f2884b85c209ba60ffea3ec969b0906168042968a86e472860d3322dd4b592"
+    },
+    {
+      "baseline_sha256": "b02248c1178ec0219a351c3500d660cec1bc0daed45c73f9d0f62940748ac29c",
+      "nonempty_lines": 49,
+      "path": "frontend/src/types.ts",
+      "physical_lines": 50,
+      "sha256": "22a5552c6963d5e3f06bdbb6aa42bc09e340c42e1f570eb49daf55a129f16ca3"
+    },
+    {
+      "baseline_sha256": null,
+      "nonempty_lines": 632,
+      "path": "frontend/src/components/PricingSettingsPage.vue",
+      "physical_lines": 709,
+      "sha256": "968483284a2c457fc2e17f7e998c4dd424d8da237f5edd5d93c5bec92d59ef4b"
+    },
+    {
+      "baseline_sha256": "3c2a57bb80c8121d0871cbb5aaca959596a6a101e9a7a337f214b44496d47af3",
+      "nonempty_lines": 311,
+      "path": "README.md",
+      "physical_lines": 394,
+      "sha256": "0973a933e03f22af9fcf3a41831a9017527ad8d5e8c1dd21580c7671037da4ac"
+    },
+    {
+      "baseline_sha256": "891d2b9cbb1d6c76d97e7548d8721d99acf1595993411aff2c8a719c46a792c4",
+      "nonempty_lines": 146,
+      "path": "specs/formula-config.md",
+      "physical_lines": 180,
+      "sha256": "e3fb1e46cbe6bbfdfe6be2b92bb2c49152665d1fa192f9c30804cd2dcbafe076"
+    },
+    {
+      "baseline_sha256": "5967a6b99c6b9dc2cd495e9fee49db42438d91e1c66ceb9fecba44ecb1230fef",
+      "nonempty_lines": 504,
+      "path": "notion.md",
+      "physical_lines": 705,
+      "sha256": "2df72367d45af4a732e99a2e3638925861766065fcdb2b8541e67e59fed8ea86"
+    }
+  ]
+}

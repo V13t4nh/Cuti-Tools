@@ -1,0 +1,79 @@
+{
+  "apply_local4173": {
+    "bytes": 1456,
+    "code": null,
+    "status": 200,
+    "strict_error": null,
+    "valid": null
+  },
+  "foreign_origin": {
+    "bytes": 91,
+    "code": "origin_not_allowed",
+    "status": 403,
+    "strict_error": null,
+    "valid": null
+  },
+  "get": {
+    "bytes": 1326,
+    "code": null,
+    "status": 200,
+    "strict_error": null,
+    "valid": null
+  },
+  "get_after": {
+    "bytes": 1456,
+    "code": null,
+    "status": 200,
+    "strict_error": null,
+    "valid": null
+  },
+  "options": {
+    "bytes": 0,
+    "code": null,
+    "status": 204,
+    "strict_error": "Expecting value: line 1 column 1 (char 0)",
+    "valid": null
+  },
+  "preview_bool": {
+    "bytes": 1540,
+    "code": null,
+    "status": 200,
+    "strict_error": null,
+    "valid": false
+  },
+  "preview_custom": {
+    "bytes": 1919,
+    "code": null,
+    "status": 200,
+    "strict_error": null,
+    "valid": true
+  },
+  "preview_huge": {
+    "bytes": 1538,
+    "code": null,
+    "status": 200,
+    "strict_error": null,
+    "valid": false
+  },
+  "preview_nan": {
+    "bytes": 1041,
+    "code": null,
+    "status": 200,
+    "strict_error": "non-standard JSON constant NaN",
+    "valid": null
+  },
+  "preview_valid": {
+    "bytes": 1812,
+    "code": null,
+    "status": 200,
+    "strict_error": null,
+    "valid": true
+  },
+  "stale_1270014173": {
+    "bytes": 272,
+    "code": "stale_revision",
+    "status": 409,
+    "strict_error": null,
+    "valid": null
+  }
+}

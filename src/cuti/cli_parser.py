@@ -74,4 +74,6 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("status", help="show row counts and effective configuration")
     audit_cmd = sub.add_parser("audit", help="show an immutable quote snapshot")
     audit_cmd.add_argument("--quote-id", required=True, type=int)
+    upload_cmd = sub.add_parser("upload-images", help="process queued lot images through Telegram")
+    upload_cmd.add_argument("--limit", type=int, default=20, help="max images to upload (default: 20)")
     return parser

@@ -13,7 +13,9 @@ from pathlib import Path
 
 from ..errors import StorageError
 from .schema_ddl import SCHEMA_SQL
-from .schema_migration import ensure_fts
+from .schema_migration import ensure_fts, ensure_media_queue
+# Queue columns are additive to the established v4 schema and remain
+# compatible with existing v4 databases during reopen.
 SCHEMA_VERSION = 4
 
 YES = "__YES__"
@@ -121,9 +123,15 @@ def migrate(conn: sqlite3.Connection) -> None:
         if quotes_columns and "model_key" not in quotes_columns:
             conn.execute("ALTER TABLE quotes ADD COLUMN model_key TEXT")
         conn.executescript(SCHEMA_SQL)
+        ensure_media_queue(conn)
         ensure_fts(conn)
         conn.execute("UPDATE schema_meta SET value = ? WHERE key = 'version'", (str(SCHEMA_VERSION),))
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+    elif current == SCHEMA_VERSION:
+        # v4 databases created before the user-facing catalog tables existed
+        # receive the additive DDL on reopen; all statements are idempotent.
+        conn.executescript(SCHEMA_SQL)
+        ensure_media_queue(conn)
     elif current > SCHEMA_VERSION:
         raise StorageError(
             f"database schema version {current} is newer than supported ({SCHEMA_VERSION})"

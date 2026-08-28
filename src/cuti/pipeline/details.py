@@ -41,14 +41,18 @@ def fetch_lot_page(
     max_retries: int,
     fetch: Callable[[str, float, int], str],
     sleep: Callable[[float], None],
-) -> str | None:
+) -> str:
     """Fetch one page, retrying only temporary transport failures."""
+    last_error: FetchError | None = None
     for attempt in range(max_retries + 1):
         if attempt and delay_seconds > 0:
             sleep(delay_seconds * (2 ** (attempt - 1)))
         try:
             return fetch(url, timeout_seconds, max_bytes)
         except FetchError as exc:
+            last_error = exc
             if not _temporary(exc) or attempt == max_retries:
-                return None
-    return None
+                raise
+    if last_error is None:
+        raise FetchError(f"{url}: details fetch made no attempt")
+    raise last_error

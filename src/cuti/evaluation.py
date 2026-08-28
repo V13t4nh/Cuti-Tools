@@ -14,7 +14,7 @@ from .liquidity import heart_to_hammer_rate
 from .models import Condition, Verdict
 from .normalize import Rules
 from .price_limit import max_buy_cost_vnd
-from .pricing import PriceQuote, quote
+from .pricing import PriceQuote, pricing_value, quote
 
 
 def cost_to_eur(amount: float | int, currency: str, settings: Settings) -> float:
@@ -26,7 +26,7 @@ def cost_to_eur(amount: float | int, currency: str, settings: Settings) -> float
     if currency == "eur":
         return float(amount)
     if currency == "vnd":
-        return float(amount) / settings.eur_vnd_rate
+        return float(amount) / pricing_value(settings, "eur_vnd_rate")
     raise PricingError("currency must be one of: vnd, eur")
 
 
@@ -105,7 +105,7 @@ def _cost_vnd(cost: float | int, currency: str, settings: Settings) -> int:
         return int(cost)
     if currency == "eur":
         cost_eur = cost_to_eur(cost, currency, settings)
-        return int(round(cost_eur * settings.eur_vnd_rate))
+        return int(round(cost_eur * pricing_value(settings, "eur_vnd_rate")))
     raise PricingError("currency must be one of: vnd, eur")
 
 

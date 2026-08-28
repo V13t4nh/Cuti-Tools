@@ -20,6 +20,7 @@ from cuti.evaluation import DealEvaluation
 from cuti.evaluation_chart import BuyerEvaluation, ComparisonChartData, evaluate_deal_with_chart
 from cuti.models import Condition, WatchForm
 from cuti.normalize import load_rules
+from cuti.pricing import pricing_value
 from cuti.storage import connect, count_rows
 
 CONDITIONS = tuple(item.value for item in Condition)
@@ -105,25 +106,17 @@ def _render_buyer_evaluation(result: BuyerEvaluation, st_ctx: Any) -> None:
 
 
 def _render_evaluation_screen(conn: object, rules: object, settings: object, today: date, st_ui: Any) -> None:
-    from cuti.ui_views import (
-        render_comparables_table,
-        render_kpi_grid,
-        render_plotly_distribution,
-        render_profit_grid,
-        render_verdict_hero,
-    )
+    from cuti.ui_views import render_comparables_table, render_kpi_grid, render_plotly_distribution, render_profit_grid, render_verdict_hero
 
-    col_left, col_right = st_ui.columns([1, 1.35], gap="large")
-
+    col_left, col_right = st_ui.columns([1, 1.45], gap="large")
     with col_left:
-        st_ui.markdown("#### 📝 Thông Tin Deal Cần Đánh Giá")
-        st_ui.caption("Chọn mẫu nhanh hoặc tự nhập thông tin từ bài rao bán:")
-
+        st_ui.markdown("<div class='section-header'>📝 Thông Tin Deal Cần Đánh Giá</div>", unsafe_allow_html=True)
+        st_ui.caption("Chọn mẫu nhanh hoặc nhập trực tiếp từ bài rao bán:")
         preset_cols = st_ui.columns(len(PRESETS))
         selected_preset = None
         for idx, (label, data) in enumerate(PRESETS.items()):
             short_name = label.split()[0] + " " + label.split()[1]
-            if preset_cols[idx].button(f"⌚ {short_name}", key=f"preset_{idx}", use_container_width=True):
+            if preset_cols[idx].button(f"{short_name}", key=f"preset_{idx}", use_container_width=True):
                 selected_preset = data
 
         default_query = selected_preset["query"] if selected_preset else "Seiko Presage SRPB41"
@@ -132,44 +125,34 @@ def _render_evaluation_screen(conn: object, rules: object, settings: object, tod
         default_form = selected_preset["form"] if selected_preset else "round"
 
         with st_ui.form("evaluate-deal-form"):
-            query = st_ui.text_input("Tên / Mã Đồng Hồ (Model / Reference):", value=default_query)
-            c1, c2 = st_ui.columns([1.5, 1])
+            query = st_ui.text_input("Tên Model / Mã Reference:", value=default_query, placeholder="Ví dụ: Omega Seamaster 210.30.42")
+            c1, c2 = st_ui.columns([1.6, 1])
             with c1:
                 amount = st_ui.number_input("Giá Người Bán Rao:", min_value=0.0, value=default_cost, step=500000.0)
             with c2:
                 currency = st_ui.selectbox("Đơn Vị Tiền:", options=CURRENCIES, index=0)
-
             c3, c4 = st_ui.columns(2)
             with c3:
-                condition_str = st_ui.selectbox("Tình Trạng Phụ Kiện:", options=CONDITIONS, index=CONDITIONS.index(default_cond) if default_cond in CONDITIONS else 0)
+                condition_str = st_ui.selectbox("Tình Trạng:", options=CONDITIONS, index=CONDITIONS.index(default_cond) if default_cond in CONDITIONS else 0)
             with c4:
-                form_str = st_ui.selectbox("Hình Dạng Vỏ (Form):", options=FORMS, index=FORMS.index(default_form) if default_form in FORMS else 0)
-
-            submitted = st_ui.form_submit_button("⚡ ĐÁNH GIÁ DEAL NGAY", type="primary", use_container_width=True)
+                form_str = st_ui.selectbox("Dáng Vỏ (Form):", options=FORMS, index=FORMS.index(default_form) if default_form in FORMS else 0)
+            submitted = st_ui.form_submit_button("⚡ THẨM ĐỊNH DEAL NGAY", type="primary", use_container_width=True)
 
     with col_right:
-        st_ui.markdown("#### 🎯 Kết Quả Thẩm Định & Phân Tích")
+        st_ui.markdown("<div class='section-header'>🎯 Kết Quả Thẩm Định & Phân Tích Rủi Ro</div>", unsafe_allow_html=True)
         if not submitted and not selected_preset:
             st_ui.info("👈 Hãy nhập thông tin deal hoặc bấm chọn mẫu nhanh bên trái để bắt đầu thẩm định.")
             return
 
         cond_obj = Condition.parse(condition_str)
         result = evaluate_deal_with_chart(
-            conn,
-            rules,
-            settings,
-            query=query,
-            cost=amount,
-            currency=currency,
-            condition=cond_obj,
-            today=today,
+            conn, rules, settings, query=query, cost=amount, currency=currency, condition=cond_obj, today=today
         )
-
         render_verdict_hero(result.decision, settings)
         render_profit_grid(result.decision, settings)
+        st_ui.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         render_kpi_grid(result.decision)
         render_plotly_distribution(result.chart, settings)
-
         matches = find_comparables(conn, title=query, condition=cond_obj, rules=rules, settings=settings, today=today)
         render_comparables_table(matches, settings)
 
@@ -179,30 +162,29 @@ def main() -> None:
     from cuti.ui_tabs import render_liquidity_leaderboard, render_live_lots_tab
     from cuti.ui_theme import inject_custom_css
 
-    st.set_page_config(page_title="CUTI-Tools — Thẩm Định Đồng Hồ", page_icon="⌚", layout="wide")
+    st.set_page_config(page_title="CUTI Terminal — Thẩm Định Đồng Hồ", page_icon="⌚", layout="wide")
     inject_custom_css()
-
-    st.title("⌚ CUTI-Tools — Định Giá & Quyết Định Mua Đồng Hồ")
     today = date.today()
 
     try:
         settings = load_settings()
         rules = load_rules(settings.rules_path)
         with connect(settings.db_path) as conn:
-            lots_count = count_rows(conn, "lots")
-            queue_count = count_rows(conn, "live_watch")
-
+            lots_count, queue_count = count_rows(conn, "lots"), count_rows(conn, "live_watch")
             st.markdown(
                 f"""
-                <div style="margin-bottom: 12px; font-size: 0.88rem; opacity: 0.85; display: flex; gap: 20px;">
-                    <span>📚 <b>Kho Dữ Liệu:</b> {lots_count:,} lô đã bán</span>
-                    <span>📡 <b>Hàng Đợi Sàn:</b> {queue_count:,} lô đang theo dõi</span>
-                    <span>💱 <b>Tỷ Giá:</b> 1 EUR = {settings.eur_vnd_rate:,.0f} VNĐ</span>
+                <div class="cuti-topbar">
+                    <div class="cuti-topbar-left">
+                        <span style="font-weight: 700; letter-spacing: 0.04em;">⌚ CUTI TERMINAL</span>
+                        <span class="status-pill"><span class="status-dot"></span> SẴN SÀNG</span>
+                        <span>📚 <b>Kho Dữ Liệu:</b> {lots_count:,} lô</span>
+                        <span>📡 <b>Hàng Đợi Sàn:</b> {queue_count:,} lô</span>
+                    </div>
+                    <div><span>💱 <b>Tỷ Giá:</b> 1 EUR = {pricing_value(settings, 'eur_vnd_rate'):,.0f} ₫</span></div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-
             tab1, tab2, tab3 = st.tabs(["🔍 Thẩm Định Deal", "📊 Xếp Hạng Thanh Khoản", "📡 Lô Đang Đấu Giá"])
             with tab1:
                 _render_evaluation_screen(conn, rules, settings, today, st)

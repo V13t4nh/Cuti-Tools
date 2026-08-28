@@ -144,6 +144,7 @@ SETTING_SPECS = (
     SettingSpec("CUTI_MIN_COMPARABLES", "min_comparables", int, "5", _at_least_one),
     SettingSpec("CUTI_MATCH_THRESHOLD", "match_threshold", float, "85", _match_threshold),
     SettingSpec("CUTI_COMPARABLE_WINDOW_DAYS", "comparable_window_days", int, "730", _at_least_one),
+    SettingSpec("CUTI_DATA_STALE_AFTER_HOURS", "data_stale_after_hours", float, "24", _positive),
     SettingSpec("CUTI_LIQUIDITY_REF_DAYS", "liquidity_ref_days", int, "30", _at_least_one),
     SettingSpec("CUTI_LIQUIDITY_HOT_HEARTS", "liquidity_hot_hearts", int, "50", _nonnegative),
     SettingSpec("CUTI_LIQUIDITY_W_SELL_THROUGH", "liquidity_w_sell_through", float, "0.5", _nonnegative),
@@ -158,6 +159,11 @@ SETTING_SPECS = (
     SettingSpec("CUTI_TELEGRAM_API_BASE", "telegram_api_base", str, "https://api.telegram.org", _nonempty, lambda _b, _n, v: v.rstrip("/")),
     SettingSpec("CUTI_TELEGRAM_BOT_TOKEN", "telegram_bot_token", str, "", lambda _n, v: v.strip()),
     SettingSpec("CUTI_TELEGRAM_CHAT_ID", "telegram_chat_id", str, "", lambda _n, v: v.strip()),
+    SettingSpec("CUTI_TELEGRAM_CHANNEL_ID", "telegram_channel_id", str, "", lambda _n, v: v.strip()),
+    SettingSpec("CUTI_TELEGRAM_UPLOAD_PAUSE_SECONDS", "telegram_upload_pause_seconds", float, "1", _nonnegative),
+    SettingSpec("CUTI_TELEGRAM_UPLOAD_MAX_ATTEMPTS", "telegram_upload_max_attempts", int, "5", _at_least_one),
+    SettingSpec("CUTI_TELEGRAM_UPLOAD_MAX_BACKOFF_SECONDS", "telegram_upload_max_backoff_seconds", float, "60", _positive),
+    SettingSpec("CUTI_TELEGRAM_UPLOAD_LEASE_SECONDS", "telegram_upload_lease_seconds", float, "300", _positive),
     SettingSpec("CUTI_REPORT_PATH", "report_path", str, "var/report.html", _nonempty, _path),
 )
 

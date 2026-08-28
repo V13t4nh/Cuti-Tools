@@ -51,6 +51,7 @@ class Settings:
     min_comparables: int
     match_threshold: float
     comparable_window_days: int
+    data_stale_after_hours: float
     liquidity_ref_days: int
     liquidity_hot_hearts: int
     liquidity_w_sell_through: float
@@ -65,8 +66,16 @@ class Settings:
     telegram_api_base: str
     telegram_bot_token: str
     telegram_chat_id: str
+    telegram_channel_id: str
+    telegram_upload_pause_seconds: float
+    telegram_upload_max_attempts: int
+    telegram_upload_max_backoff_seconds: float
+    telegram_upload_lease_seconds: float
     report_path: Path
+    pricing_profile: object | None = None
 
     @property
     def total_fee_multiplier(self) -> float:
+        if self.pricing_profile is not None:
+            return self.pricing_profile.values["commission_rate"] * (1.0 + self.pricing_profile.values["vat_on_commission_rate"])
         return self.commission_rate * (1.0 + self.vat_on_commission_rate)

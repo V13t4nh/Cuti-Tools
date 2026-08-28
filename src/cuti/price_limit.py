@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .config import Settings
+from .errors import PricingError
 from .models import Verdict
 from .pricing import quote
 
@@ -27,9 +28,13 @@ def max_buy_cost_vnd(
 
     low = 1
     high = 1
-    while is_green(high):
+    for _ in range(63):
+        if not is_green(high):
+            break
         low = high
         high *= 2
+    else:
+        raise PricingError("max_buy_cost search did not find a finite boundary")
     while low + 1 < high:
         middle = (low + high) // 2
         if is_green(middle):

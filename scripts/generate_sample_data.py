@@ -127,7 +127,7 @@ def _lot_html(
         f"{hammer_attr}"
         f' data-opened-at="{opened_at.isoformat()}"'
         f' data-ended-at="{ended_at.isoformat()}"'
-        f' data-url="lots/{lot_id}.html"></div>'
+        f' data-url="https://www.catawiki.com/en/l/{lot_id}"></div>'
     )
 
 

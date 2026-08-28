@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Iterable
+from typing import Iterable, Mapping
 
 from ..errors import StorageError
 from .schema import NO, YES, utcnow
@@ -39,37 +39,62 @@ def upsert_live_watch(
     conn: sqlite3.Connection, rows: Iterable[LiveWatchRow], now: datetime
 ) -> tuple[int, int]:
     """Track open lots. Return ``(newly tracked, refreshed)``."""
+    rows = list(rows)
+    with conn:
+        return _upsert_live_watch_rows(conn, rows, now)
+
+
+def _upsert_live_watch_rows(
+    conn: sqlite3.Connection, rows: Iterable[LiveWatchRow], now: datetime
+) -> tuple[int, int]:
     timestamp = utcnow(now)
     tracked = 0
     refreshed = 0
-    with conn:
-        for row in rows:
-            end = row.bidding_end_at.isoformat() if row.bidding_end_at else None
-            exists = conn.execute(
-                "SELECT 1 FROM live_watch WHERE lot_id = ?", (row.lot_id,)
-            ).fetchone()
-            conn.execute(
-                """
-                INSERT INTO live_watch (
-                    lot_id, source, title, subtitle, url, bidding_end_at,
-                    first_seen_at, last_seen_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(lot_id) DO UPDATE SET
-                    source=excluded.source, title=excluded.title,
-                    subtitle=excluded.subtitle, url=excluded.url,
-                    bidding_end_at=excluded.bidding_end_at,
-                    last_seen_at=excluded.last_seen_at
-                """,
-                (
-                    row.lot_id, row.source, row.title, row.subtitle, row.url, end,
-                    timestamp, timestamp,
-                ),
-            )
-            if exists:
-                refreshed += 1
-            else:
-                tracked += 1
+    for row in rows:
+        end = row.bidding_end_at.isoformat() if row.bidding_end_at else None
+        exists = conn.execute(
+            "SELECT 1 FROM live_watch WHERE lot_id = ?", (row.lot_id,)
+        ).fetchone()
+        conn.execute(
+            """
+            INSERT INTO live_watch (
+                lot_id, source, title, subtitle, url, bidding_end_at,
+                first_seen_at, last_seen_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(lot_id) DO UPDATE SET
+                source=excluded.source, title=excluded.title,
+                subtitle=excluded.subtitle, url=excluded.url,
+                bidding_end_at=excluded.bidding_end_at,
+                last_seen_at=excluded.last_seen_at
+            """,
+            (
+                row.lot_id, row.source, row.title, row.subtitle, row.url, end,
+                timestamp, timestamp,
+            ),
+        )
+        if exists:
+            refreshed += 1
+        else:
+            tracked += 1
     return tracked, refreshed
+
+
+def upsert_live_watch_with_images(
+    conn: sqlite3.Connection,
+    rows: Iterable[LiveWatchRow],
+    image_urls: Mapping[str, str | None],
+    now: datetime,
+) -> tuple[int, int]:
+    """Commit live-watch rows and discovered images in one outer transaction."""
+    rows = list(rows)
+    with conn:
+        result = _upsert_live_watch_rows(conn, rows, now)
+        from . import upsert_lot_image
+        for row in rows:
+            image_url = image_urls.get(row.lot_id)
+            if image_url:
+                upsert_lot_image(conn, lot_id=row.lot_id, idx=0, source_url=image_url)
+    return result
 
 
 def fetch_live_watch_due(

@@ -1,0 +1,16 @@
+{
+  "resolved": {
+    "db-only-lot": "https://source.invalid/images/db-only.jpg",
+    "live-only-lot": "https://source.invalid/images/live-only.jpg"
+  },
+  "unresolved": {
+    "empty-image-lot": null,
+    "missing-image-lot": null
+  },
+  "request_ids": [
+    "db-only-lot",
+    "live-only-lot",
+    "empty-image-lot",
+    "missing-image-lot"
+  ]
+}

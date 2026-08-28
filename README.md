@@ -1,5 +1,19 @@
 # CUTI-Tools
 
+## Product specifications
+
+- [Information Architecture](./specs/IA.md)
+- [Product Search](./specs/features/product-search.md)
+- [Saved Items](./specs/features/saved-items.md)
+- [Auction Lot Discovery](./specs/features/auction-lot-discovery.md)
+- [Liquidity Market](./specs/features/liquidity-market.md)
+- [Core Journey: Thẩm định cơ hội mua](./specs/journeys/assessment.md)
+- [Global UX Rules](./specs/GLOBAL_UX_RULES.md)
+- [Responsive UX Contract](./specs/RESPONSIVE_CONTRACT.md)
+- [Motion and Page Transition Contract](./specs/MOTION_CONTRACT.md)
+- [UX Contract](./specs/UX_CONTRACT.md)
+- [Screen Inventory and UI Readiness](./specs/SCREEN_INVENTORY.md)
+
 Công cụ hỗ trợ quyết định arbitrage đồng hồ: thu thập auction đã kết thúc, khớp
 đúng reference và tình trạng, tính net p25/median/p75, hiển thị đèn
 Xanh/Vàng/Đỏ, theo dõi deal và xếp hạng thanh khoản.
@@ -16,10 +30,35 @@ python -m venv .venv
 `verify.py` chạy toàn bộ test và luồng thật
 `init-db → ingest → quote → watch → liquidity → report` trên một thư mục riêng
 trong `var/verify/`. Script không xóa database hay artifact có sẵn.
-Lượt verify hiện chạy 322 test; marker `LOGIC_COVERAGE_VERDICTS` được đo từ các
+Lượt verify hiện chạy 323 test; marker `LOGIC_COVERAGE_VERDICTS` được đo từ các
 verdict thực nhận khi evaluate fixture logic coverage và sắp xếp xác định.
 
 `CUTI_MATCH_THRESHOLD` dùng thang phần trăm 0–100 (mặc định `85`).
+
+## Frontend sản phẩm
+
+Frontend Vue 3 + TypeScript + Vite nằm trong `frontend/`, dùng trực tiếp REST API
+với các route `/assessment`, `/tracking`, `/market`, `/settings`. Cài dependency đã khai
+báo rồi chạy toàn hệ thống bằng một lệnh:
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+`npm run dev` quản lý cả API Python và Vite; `npm run preview` build production
+rồi chạy API cùng preview server. Database, catalog canonical và nguồn dữ liệu
+được điều khiển bởi cấu hình CUTI hiện có. Frontend không có fixture/fallback
+production và không tính lại luật thẩm định.
+
+Kiểm tra frontend:
+
+```powershell
+npm run typecheck
+npm run lint
+npm run build
+```
 
 ## Chạy công cụ với dữ liệu mẫu
 
@@ -35,7 +74,7 @@ verdict thực nhận khi evaluate fixture logic coverage và sắp xếp xác �
 .\.venv\Scripts\cuti.exe status
 ```
 
-Mở giao diện buyer một trang:
+Streamlit chỉ còn là công cụ nội bộ/legacy:
 
 ```powershell
 .\.venv\Scripts\python.exe -m streamlit run src\cuti\app.py
@@ -87,7 +126,8 @@ các thuộc tính ảnh hưởng mạnh tới giá như `automatic`, `quartz`, 
 Matching đọc toàn bộ candidate trong cửa sổ cấu hình, không cắt ngầm theo số
 lượng.
 
-Công thức pricing chỉ tồn tại tại `src/cuti/pricing.py`:
+Công thức pricing mặc định được giữ trong cấu hình engine; `src/cuti/pricing.py`
+dùng engine chung cho các luồng tính. Với cấu hình ban đầu, quy tắc là:
 
 ```text
 fee       = hammer * commission_rate
@@ -103,6 +143,30 @@ insufficient_data sold comparables < min_comparables
 Unsold lot không đi vào percentile nhưng vẫn đi vào `attempt_count` và
 sell-through. Mỗi quote lưu bản sao comparables cùng toàn bộ assumption và hash
 của rules, nên audit không thay đổi khi dữ liệu lot về sau được cập nhật.
+
+### Cấu hình tính toán
+
+Mở `/settings` để sửa mức phí, tỷ giá, biên lợi nhuận, lợi nhuận tối thiểu,
+hoặc thêm tham số và công thức phụ. Hai kết quả bắt buộc là `net_proceeds` và
+`profit_threshold`. Biểu thức hỗ trợ biến đã khai báo, `+ - * /`, dấu ngoặc,
+`min()` và `max()`; không chạy mã Python tùy ý.
+
+Khoản tiền trong biểu thức dùng EUR; tỷ lệ nhập dưới dạng số thập phân
+(ví dụ `0.1` tương ứng 10%). Tỷ giá có đơn vị VND/EUR. Chọn **Chạy thử** với
+cùng giá bán và giá vốn để xem kết quả trước/sau do backend tính và định dạng,
+sau đó mới **Áp dụng**. Sửa bản nháp phải chạy thử lại.
+
+Cấu hình chưa lưu lấy rõ ràng từ env hiện tại. Áp dụng thành công mới tạo
+`config/pricing.json` trong thư mục home của CUTI; file này trở thành nguồn
+pricing có hiệu lực. File đã lưu nhưng không hợp lệ sẽ báo lỗi, không quay
+âm thầm về env. Preview không ghi file hay DB. Không thay đổi schema DB.
+
+Engine chỉ nhận công thức bảo đảm tính được giá hòa vốn và giá mua tối đa:
+lợi nhuận phải tuyến tính theo giá bán/giá vốn, tăng theo giá bán và giảm theo
+giá vốn; ngưỡng lợi nhuận không giảm theo giá vốn. Công thức ngoài phạm vi sẽ
+bị từ chối. Kết quả lưu giữ snapshot công thức và tham số đã dùng; áp dụng
+cấu hình mới không sửa lịch sử. Xem [đặc tả](specs/formula-config.md) cho
+hợp đồng API, giới hạn biểu thức và phạm vi kiểm chứng.
 
 ## Contract dữ liệu mẫu
 
@@ -141,6 +205,10 @@ Copy `.env.example` thành `.env`, sau đó chỉnh các biến cần thiết. G
 process environment ưu tiên hơn `.env`; biến `CUTI_*` không biết sẽ bị từ chối
 để tránh typo im lặng.
 
+`cuti status` và `GET /api/status` phân loại dữ liệu là `fresh`, `stale` hoặc
+`no_data`. Ngưỡng mặc định là 24 giờ và có thể đổi bằng
+`CUTI_DATA_STALE_AFTER_HOURS`.
+
 ```dotenv
 CUTI_NOTIFIER=telegram
 CUTI_TELEGRAM_BOT_TOKEN=...
@@ -160,6 +228,77 @@ lỗi, alert trở lại trạng thái pending và retry ở lần `watch` sau; 
 hình sẽ vào `dead`, không bị báo nhầm là đã gửi. Outbox vẫn được drain nếu fetch
 hoặc parse feed mới thất bại. `cuti watch` in lỗi delivery và trả exit code khác
 0 để cron/Task Scheduler không báo thành công giả.
+
+Ảnh lot được tách khỏi luồng cào. Crawler chỉ lưu URL vào SQLite; API trả trạng
+thái `queued` và không chờ Telegram. Chạy `cuti upload-images --limit 20` ở
+process riêng để Telegram tự tải ảnh từ URL bằng `sendPhoto`; máy local không
+tải bytes ảnh. Worker commit từng ảnh, in lỗi theo lot/index và trả exit code
+khác 0 nếu còn ảnh lỗi để lần chạy sau retry. API không trả URL CDN chứa bot token.
+Mỗi cover là snapshot bất biến theo `(lot_id, idx=0)`: URL giống thì idempotent;
+URL khác trả conflict, giữ nguyên ảnh và metadata Telegram đã lưu.
+
+### Chạy crawler định kỳ và image worker
+
+Lệnh dùng hằng ngày tại root repo (giữ nguyên DB hiện có):
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_daily.py
+```
+
+Lệnh này quản lý crawler và đúng một image worker, đối soát cover còn thiếu của
+cả lot hiện tại lẫn lot cũ trong DB, rồi chờ queue xử lý xong và in tổng kết.
+Ảnh `ready` được giữ nguyên; job dang dở được phục hồi theo lease/retry hiện có.
+Không cần xóa DB, chạy `init-db`, nhập ngày hoặc mở thêm cửa sổ upload ảnh.
+Nếu crawler bỏ qua vì dữ liệu còn mới, đối soát ảnh và phục hồi queue vẫn chạy.
+
+Queue rảnh tạm thời không có nghĩa hoàn tất: lệnh vẫn chờ retry đến hạn/lease
+hết hạn. Lot không lấy được cover, ảnh lỗi permanent, lỗi crawler/worker đều được
+báo rõ và trả exit code khác `0`; không tự đoán URL hoặc thay ảnh của lot khác.
+`Ctrl+C` dừng lượt chạy có kiểm soát. Không mở worker riêng đồng thời với lệnh này.
+
+Telegram tự tải URL nguồn qua `sendPhoto`. Có một giới hạn at-least-once: nếu
+Telegram đã nhận ảnh nhưng process chết trước khi DB commit, lần phục hồi có thể
+gửi trùng một tin nhắn Telegram. Không có bảo đảm exactly-once ở cửa sổ đó.
+
+Verify offline vẫn chạy bằng `scripts/verify.py`. Kiểm tra tiến trình con thật
+được tách riêng khỏi tầng offline vì dùng HTTP giả trên loopback:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p daily_process_integration_t2.py -v
+```
+
+Harness này dùng DB tạm và credential giả; không gửi dữ liệu mẫu lên Telegram thật.
+
+Các lệnh tách bên dưới vẫn dành cho chẩn đoán hoặc vận hành thủ công:
+
+Scheduled crawler dùng mốc mới nhất của `lots.updated_at` và
+`live_watch.last_seen_at`. Nếu dữ liệu còn mới, nó bỏ qua lần chạy; lỗi truy vấn,
+timestamp hoặc pipeline in `[ERROR]` và trả exit code `1` để Task Scheduler/cron
+không báo thành công giả.
+
+Mở một cửa sổ PowerShell để chạy crawler:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_scheduled_crawl.py
+```
+
+Dùng `--force` khi cần chạy bất kể freshness:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_scheduled_crawl.py --force
+```
+
+Mở một cửa sổ PowerShell khác để chạy worker bền vững:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_image_worker.py --limit 20 --poll-seconds 30
+```
+
+`--limit` là batch tối đa mỗi lượt có việc; `--poll-seconds` chỉ dùng khi hàng
+đợi rỗng. Worker lấy timestamp UTC mới ở mỗi lượt, commit từng ảnh qua
+`process_lot_image_queue`, và dựa vào lease SQLite hiện có để nhiều process không
+nhận cùng một ảnh. Nhấn `Ctrl+C` để dừng sạch. Không có biến môi trường mới; các
+giá trị lease, retry, pause và Telegram giữ theo `.env.example`.
 
 ### Kiểm tra Details của một lot (smoke test thủ công)
 
@@ -251,5 +390,5 @@ radius khi tiếp tục phát triển.
  stdlib-only). Chưa có Playwright, proxy, hay quét theo dải lot id.
 - Chưa triển khai crawler Facebook/marketplace thật. Khi làm, chỉ thay adapter
  đầu vào; normalization, pricing, audit, UI, liquidity và notifier giữ nguyên.
-- Không lưu ảnh, không lưu sổ từng lần đấu. Chỉ snapshot `hearts` và
- `bids_count` tại thời điểm đóng — đủ để đo sức nóng, không phình database.
+- Không tải bytes ảnh về local và không lưu sổ từng lần đấu. SQLite chỉ giữ URL
+  cover cùng Telegram metadata; `hearts` và `bids_count` được snapshot khi đóng.

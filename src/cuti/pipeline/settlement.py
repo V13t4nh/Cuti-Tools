@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import sqlite3
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable
 
 from ..config import Settings
-from ..errors import FetchError, NormalizationError
+from ..errors import FetchError, NormalizationError, ScrapeError
 from ..models import Lot, WatchForm
 from ..normalize import Rules, classify
 from ..scrapers.catawiki_lot_page import parse_lot_page
@@ -28,6 +28,8 @@ class _Settlement:
     still_open: int = 0
     vanished: int = 0
     unclassified: int = 0
+    details_failed: int = 0
+    errors: list[str] = field(default_factory=list)
 
 
 def _settled_lot(
@@ -53,11 +55,13 @@ def _settled_lot(
         override_json=override_json,
         ai_json=ai_json,
     )
+    if resolved.brand is None:
+        raise NormalizationError(f"{row.lot_id}: no resolved brand")
     values: dict[str, object] = {
         "lot_id": row.lot_id,
         "source": row.source,
         "title": row.title,
-        "brand": resolved.brand or classification.brand,
+        "brand": resolved.brand,
         "model_key": resolved.model_key,
         "condition_tag": classification.condition,
         "form": WatchForm.UNKNOWN,
@@ -135,11 +139,13 @@ def settle(
                 result.finished.append(lot_id)
                 continue
             try:
-                try:
-                    html = fetch_details(lot_id) if fetch_details is not None else None
-                except FetchError:
-                    html = None
-                page = parse_lot_page(html, rules=rules) if html is not None else None
+                if fetch_details is not None:
+                    html = fetch_details(lot_id)
+                    if html is None:
+                        raise FetchError(f"{lot_id}: details fetch returned no document")
+                    page = parse_lot_page(html, rules=rules)
+                else:
+                    page = None
                 lot = _settled_lot(
                     row,
                     state,
@@ -148,6 +154,10 @@ def settle(
                     details=page,
                     description=page.description if page is not None else None,
                 )
+            except (FetchError, ScrapeError) as exc:
+                result.details_failed += 1
+                result.errors.append(f"{lot_id}: {exc}")
+                continue
             except NormalizationError:
                 result.unclassified += 1
                 result.finished.append(lot_id)
