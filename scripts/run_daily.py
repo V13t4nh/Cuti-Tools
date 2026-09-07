@@ -109,6 +109,58 @@ def _stop_worker(process: multiprocessing.Process | None, parent_connection: Any
         process.join()
 
 
+def _run_refine(conn: Any, settings: Any) -> list[str]:
+    """Run Gemini LLM refinement for newly settled lots if configured."""
+    import sqlite3
+
+    if not isinstance(conn, sqlite3.Connection):
+        return []
+
+    db_path = getattr(settings, "db_path", None)
+    if db_path is None:
+        return []
+
+    cookie_path = getattr(settings, "gemini_cookie_path", None)
+    if cookie_path is None and hasattr(db_path, "parent"):
+        candidate = Path(db_path).parent / "gemini_cookie.json"
+        if candidate.is_file():
+            cookie_path = candidate
+
+    if not cookie_path or not Path(cookie_path).is_file():
+        print("[REFINE] Skip: Gemini cookie not configured", flush=True)
+        return []
+
+    try:
+        from run_llm_refine import count_unrefined_lots, run_refinement
+    except ImportError as exc:
+        print(f"[REFINE] Skip: cannot load refine module ({exc})", flush=True)
+        return []
+
+    try:
+        unrefined = count_unrefined_lots(conn, force=False)
+        if unrefined == 0:
+            print("[REFINE] No unrefined lots in database", flush=True)
+            return []
+
+        print(f"[START] Running scheduled Gemini LLM refinement ({unrefined} unrefined lots)...", flush=True)
+        processed, success, errors = run_refinement(
+            conn,
+            cookie_path=cookie_path,
+            batch_size=3,
+            delay=1.5,
+            model="gemini-flash",
+            should_update=True,
+        )
+        print(
+            f"[REFINE] Processed: {processed}, Successfully refined: {success}, "
+            f"Remaining: {count_unrefined_lots(conn, force=False)}", flush=True,
+        )
+        return errors
+    except Exception as exc:
+        print(f"[ERROR] LLM refinement error: {exc}", file=sys.stderr, flush=True)
+        return [f"refine error: {exc}"]
+
+
 def run_daily(*, settings: Any = None, now: datetime | None = None, api: Any = None,
               sleep: Callable[[float], None] = time.sleep) -> int:
     settings = settings or load_settings(base_dir=PROJECT_ROOT)
@@ -144,6 +196,8 @@ def run_daily(*, settings: Any = None, now: datetime | None = None, api: Any = N
                 print(f"[IMAGES] {queue_state(conn)}", flush=True)
                 if count_lot_images(conn)["permanent_error"]:
                     errors.append("permanent image failures remain")
+                refine_errors = _run_refine(conn, settings)
+                errors.extend(refine_errors)
     except ProcessLockBusy as exc:
         print(f"[BUSY] {exc}", file=sys.stderr, flush=True)
         return 2
