@@ -107,3 +107,20 @@ explicit product selection, tab context, mobile actions, error feedback,
 focus restoration, and reduced motion. No simplification is accepted that removes
 those safeguards. Verification follow-up for simplification: none. Browser
 acceptance is still required before claiming the visual/interaction gate complete.
+
+## React Bits Phase 2 amendment — 2026-08-29
+
+The user subsequently approved a full frontend framework migration and the exact
+React Bits mapping, superseding this document's earlier Vue-only and no-new-dependency
+constraints for that approved phase only.
+
+- The route set remains exactly `/assessment`, `/tracking`, `/market`, `/settings`.
+- React 19 + TypeScript + Vite replaces Vue while retaining the existing History API,
+  REST contracts, state transitions, validation, storage behavior and visible content.
+- The only external UI components are React Bits Pill Nav, Curved Input, Spotlight Card
+  and Animated Content. GSAP is their only added runtime animation dependency.
+- Desktop/tablet/mobile preserve the same semantic navigation items and functional
+  inventory; the mobile bottom navigation remains an internal CUTI component.
+- Browser verification covers all four routes at 1440, 1024, 768, 390 and 320 pixels,
+  plus autocomplete keyboard selection, URL restoration, market Enter-to-apply,
+  popover focus restoration and mobile detail focus containment.

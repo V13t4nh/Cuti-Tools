@@ -110,23 +110,47 @@ def settle_lots(
     now: datetime,
     *,
     api: catawiki_api.CatawikiApi | None = None,
+    record_unclassified: bool = False,
+    max_rounds: int = 1,
 ) -> SettleReport:
     """Phase 2: read the hammer price of every tracked lot that has closed."""
     client = _catawiki_client(settings, api)
-    candidates = fetch_live_watch_due(conn, until=today, limit=settings.settle_max_lots)
-    details = _lot_page_fetcher(candidates, settings) if settings.details_enabled else None
-    settlement = settle(client, rules, settings, candidates, fetch_details=details)
-    written = persist(conn, settlement, now)
+    tot_candidates = tot_sold = tot_unsold = tot_still_open = tot_vanished = 0
+    tot_unclass = tot_details_failed = tot_written = 0
+    all_errors: list[str] = []
+    round_count = 0
+    while round_count < max(1, max_rounds):
+        round_count += 1
+        candidates = fetch_live_watch_due(conn, until=today, limit=settings.settle_max_lots)
+        if not candidates:
+            break
+        details = _lot_page_fetcher(candidates, settings) if settings.details_enabled else None
+        settlement = settle(
+            client, rules, settings, candidates,
+            fetch_details=details, record_unclassified=record_unclassified,
+        )
+        written = persist(conn, settlement, now)
+        tot_candidates += len(candidates)
+        tot_sold += settlement.sold
+        tot_unsold += settlement.unsold
+        tot_still_open += settlement.still_open
+        tot_vanished += settlement.vanished
+        tot_unclass += settlement.unclassified
+        tot_details_failed += settlement.details_failed
+        tot_written += written
+        all_errors.extend(settlement.errors)
+        if not settlement.finished and not written:
+            break
     return SettleReport(
-        candidates=len(candidates),
-        sold=settlement.sold,
-        unsold=settlement.unsold,
-        still_open=settlement.still_open,
-        vanished=settlement.vanished,
-        unclassified=settlement.unclassified,
-        details_failed=settlement.details_failed,
-        errors=tuple(settlement.errors),
-        lots_written=written,
+        candidates=tot_candidates,
+        sold=tot_sold,
+        unsold=tot_unsold,
+        still_open=tot_still_open,
+        vanished=tot_vanished,
+        unclassified=tot_unclass,
+        details_failed=tot_details_failed,
+        errors=tuple(all_errors),
+        lots_written=tot_written,
         queue_remaining=count_live_watch(conn),
         requests_made=client.requests_made,
     )

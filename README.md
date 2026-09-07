@@ -37,9 +37,11 @@ verdict thực nhận khi evaluate fixture logic coverage và sắp xếp xác �
 
 ## Frontend sản phẩm
 
-Frontend Vue 3 + TypeScript + Vite nằm trong `frontend/`, dùng trực tiếp REST API
-với các route `/assessment`, `/tracking`, `/market`, `/settings`. Cài dependency đã khai
-báo rồi chạy toàn hệ thống bằng một lệnh:
+Frontend React 19 + TypeScript + Vite nằm trong `frontend/`, dùng trực tiếp REST API
+với các route `/assessment`, `/tracking`, `/market`, `/settings`. Giao diện dùng bốn
+component React Bits đã duyệt (Pill Nav, Curved Input, Spotlight Card và Animated
+Content); GSAP chỉ phục vụ animation của React Bits. Cài dependency đã khai báo rồi
+chạy toàn hệ thống bằng một lệnh:
 
 ```powershell
 cd frontend

@@ -29,6 +29,27 @@ class BrandLiquidity:
     status: str | None = None
 
 
+class ExcludedGroup(tuple):
+    """A 3-tuple (brand, form, lots) with optional descriptive metrics."""
+
+    def __new__(
+        cls,
+        brand: str,
+        form: WatchForm,
+        lots: int,
+        sold: int = 0,
+        sell_through: float = 0.0,
+        median_days_to_close: float | None = None,
+        heart_to_hammer: float = 0.0,
+    ) -> ExcludedGroup:
+        inst = super().__new__(cls, (brand, form, lots))
+        inst.brand, inst.form, inst.lots = brand, form, lots
+        inst.sold, inst.sell_through = sold, sell_through
+        inst.median_days_to_close = median_days_to_close
+        inst.heart_to_hammer = heart_to_hammer
+        return inst
+
+
 @dataclass(frozen=True, slots=True)
 class LiquidityReport:
     window_start: date
@@ -164,10 +185,13 @@ def compute_liquidity(
             grouped.setdefault((lot.brand, lot.form), []).append(lot)
 
     scored: list[BrandLiquidity] = []
-    excluded: list[tuple[str, WatchForm, int]] = []
+    excluded: list[ExcludedGroup] = []
     for (brand, form), lots in grouped.items():
         if len(lots) < settings.liquidity_min_lots:
-            excluded.append((brand, form, len(lots)))
+            sold, sell_through, median_days, _speed, heart_to_hammer, _index = _metrics(lots, settings)
+            excluded.append(
+                ExcludedGroup(brand, form, len(lots), sold, sell_through, median_days, heart_to_hammer)
+            )
             continue
         scored.append(_score_group(brand, form, lots, settings, today))
 

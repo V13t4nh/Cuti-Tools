@@ -88,9 +88,11 @@ Không có chức năng người dùng cuối nào trong IA bị ẩn ngoài ba 
 | Phiên đấu giá | Implemented | List/search/filter/detail và hai trạng thái công việc đã nối `live_watch` |
 | Cấu hình tính toán | Implemented | Đọc active profile, sửa draft, preview/apply qua pricing-config API; không tính toán ở client |
 
-Các page được triển khai trong `frontend/` bằng Vue 3 + TypeScript + Vite và chỉ đọc API
-thật. Catalog canonical có provenance trong `config/catalog.json`; fixture không nằm trên
-production path. Streamlit nằm ngoài frontend sản phẩm.
+Các page được triển khai trong `frontend/` bằng React 19 + TypeScript + Vite và chỉ đọc
+API thật. Catalog canonical có provenance trong `config/catalog.json`; fixture không nằm
+trên production path. Streamlit nằm ngoài frontend sản phẩm. React Bits là nguồn external
+UI duy nhất; implementation hiện dùng Pill Nav, Curved Input, Spotlight Card và Animated
+Content từ catalog chính thức.
 
 Mỗi page, tab, panel và popover phải có đủ feature/content trên desktop, tablet và mobile
 theo [Responsive UX Contract](./RESPONSIVE_CONTRACT.md). Responsive version không phải một

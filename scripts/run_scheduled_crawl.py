@@ -82,20 +82,26 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def run_scheduled_flow(conn: object, settings: object, rules: object, now: datetime,
                        *, api: object = None, force: bool = False) -> tuple[bool, list[str]]:
     """Run the shared freshness-guarded watch-live and settlement sequence."""
-    if not force and _is_recently_updated(conn):
-        print("[SKIP] Fresh database; crawl and settlement skipped.", flush=True)
+    from cuti.storage import fetch_live_watch_due
+    due_lots = fetch_live_watch_due(conn, until=now.date(), limit=1)
+    recently_updated = _is_recently_updated(conn)
+    if not force and recently_updated and not due_lots:
+        print("[SKIP] Fresh database and no due lots; crawl and settlement skipped.", flush=True)
         return True, []
     errors: list[str] = []
-    print("[START] Running scheduled watch-live...", flush=True)
-    watch_rep = watch_live(conn, settings, now, api=api)
-    print(
-        f"[WATCH-LIVE] Seen: {watch_rep.lots_seen}, Tracked: {watch_rep.lots_tracked}, "
-        f"Queue: {count_rows(conn, 'live_watch')}", flush=True,
-    )
+    if force or not recently_updated:
+        print("[START] Running scheduled watch-live...", flush=True)
+        watch_rep = watch_live(conn, settings, now, api=api)
+        print(
+            f"[WATCH-LIVE] Seen: {watch_rep.lots_seen}, Tracked: {watch_rep.lots_tracked}, "
+            f"Queue: {count_rows(conn, 'live_watch')}", flush=True,
+        )
+    else:
+        print("[INFO] Watch-live skipped (recently updated); settling overdue queue...", flush=True)
     print("[START] Running scheduled settle...", flush=True)
-    settle_rep = settle_lots(conn, rules, settings, now.date(), now, api=api)
+    settle_rep = settle_lots(conn, rules, settings, now.date(), now, api=api, record_unclassified=True, max_rounds=25)
     print(
-        f"[SETTLE] Sold: {settle_rep.sold}, Unsold: {settle_rep.unsold}, "
+        f"[SETTLE] Candidates: {settle_rep.candidates}, Sold: {settle_rep.sold}, Unsold: {settle_rep.unsold}, "
         f"Lots written: {settle_rep.lots_written}, Lots total: {count_rows(conn, 'lots')}", flush=True,
     )
     errors.extend(settle_rep.errors)

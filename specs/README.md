@@ -30,4 +30,4 @@ chốt lại hành vi trước khi triển khai.
 - Responsive UX Contract: parity 100% trên desktop, tablet và mobile đã chốt ngày 2026-08-25.
 - Motion Contract: route, tab, detail, popover và reduced-motion đã chốt ngày 2026-08-25.
 - UX Contract: phiên bản 0.3, bao phủ toàn bộ IA.
-- Implementation: Vue 3 + TypeScript + Vite đã nối ba route, bốn tab, detail panel/sheet và data popover với API/SQLite thật ngày 2026-08-25; không có production fixture.
+- Implementation: React 19 + TypeScript + Vite nối bốn route, các tab, detail panel/sheet và data popover với API/SQLite thật. UI dùng đúng bốn component React Bits đã duyệt; không có production fixture.

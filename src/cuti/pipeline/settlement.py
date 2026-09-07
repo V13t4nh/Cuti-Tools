@@ -10,8 +10,8 @@ from typing import Callable
 
 from ..config import Settings
 from ..errors import FetchError, NormalizationError, ScrapeError
-from ..models import Lot, WatchForm
-from ..normalize import Rules, classify
+from ..models import Condition, Lot, WatchForm
+from ..normalize import Rules, classify, detect_brand
 from ..scrapers.catawiki_lot_page import parse_lot_page
 from .settlement_resolver import resolve_typed_fields
 from ..scrapers import catawiki_api
@@ -32,6 +32,77 @@ class _Settlement:
     errors: list[str] = field(default_factory=list)
 
 
+def _condition_from_specs(details: object) -> Condition | None:
+    if details is None:
+        return None
+    specs = getattr(details, "specs", None) or getattr(details, "details", None)
+    if not isinstance(specs, dict) and isinstance(details, dict):
+        specs = details.get("specs") or details.get("details") or details
+    if not isinstance(specs, dict):
+        return None
+    box = specs.get("Original box included") or specs.get("Box included") or specs.get("Original box") or specs.get("Box")
+    papers = specs.get("Original papers included") or specs.get("Papers included") or specs.get("Original papers") or specs.get("Papers") or specs.get("Original warranty included")
+    b = (box.strip().lower() in ("yes", "co", "true", "1")) if box else (False if box and box.strip().lower() in ("no", "khong", "false", "0") else None)
+    p = (papers.strip().lower() in ("yes", "co", "true", "1")) if papers else (False if papers and papers.strip().lower() in ("no", "khong", "false", "0") else None)
+    if b is True and p is True:
+        return Condition.FULLSET
+    if b is True and p is False:
+        return Condition.BOX
+    if b is False and p is True:
+        return Condition.PAPERS
+    if b is False and p is False:
+        return Condition.NAKED
+    return None
+
+
+def _unclassified_lot(
+    row: LiveWatchRow,
+    state: catawiki_api.LiveState,
+    outcome: catawiki_api.BiddingOutcome,
+    rules: Rules,
+    reason: str,
+    details: object = None,
+) -> Lot:
+    brand = None
+    try:
+        from ..normalize import detect_brand
+        brand = detect_brand(row.title, rules)
+    except NormalizationError:
+        pass
+    if brand is None and details is not None:
+        brand = getattr(details, "brand", None)
+    brand_val = brand or "unknown"
+    specs: dict[str, object] = {"unclassified_reason": reason}
+    highest = outcome.hammer_eur or state.current_bid_eur
+    if highest is not None:
+        specs["highest_bid_eur"] = highest
+    if details is not None:
+        detail_specs = getattr(details, "specs", None) or getattr(details, "details", None)
+        if isinstance(detail_specs, dict):
+            specs["details"] = dict(detail_specs)
+    return Lot(
+        lot_id=row.lot_id,
+        source=row.source,
+        title=row.title,
+        brand=brand_val,
+        model_key=f"{brand_val}:unclassified",
+        condition_tag=Condition.NAKED,
+        form=WatchForm.UNKNOWN,
+        hearts=state.favorite_count,
+        sold=outcome.is_sold,
+        hammer_eur=outcome.hammer_eur,
+        opened_at=state.opened_at,
+        ended_at=state.ended_at,
+        url=row.url,
+        subtitle=row.subtitle,
+        bids_count=outcome.bids_count,
+        needs_review=1,
+        review_status="pending",
+        specs_json=json.dumps(specs, sort_keys=True),
+        description=getattr(details, "description", None) if details is not None else None,
+    )
+
+
 def _settled_lot(
     row: LiveWatchRow,
     state: catawiki_api.LiveState,
@@ -43,7 +114,8 @@ def _settled_lot(
     ai_json: object = None,
 ) -> Lot:
     classification = classify(row.title, rules)
-    if classification.condition is None:
+    condition = classification.condition or _condition_from_specs(details)
+    if condition is None:
         raise NormalizationError(f"{row.lot_id}: title states no condition")
     row_details = details
     row_description = description
@@ -57,44 +129,23 @@ def _settled_lot(
     )
     if resolved.brand is None:
         raise NormalizationError(f"{row.lot_id}: no resolved brand")
-    values: dict[str, object] = {
-        "lot_id": row.lot_id,
-        "source": row.source,
-        "title": row.title,
-        "brand": resolved.brand,
-        "model_key": resolved.model_key,
-        "condition_tag": classification.condition,
-        "form": WatchForm.UNKNOWN,
-        "hearts": state.favorite_count,
-        "sold": outcome.is_sold,
-        "hammer_eur": outcome.hammer_eur,
-        "opened_at": state.opened_at,
-        "ended_at": state.ended_at,
-        "url": row.url,
-        "subtitle": row.subtitle,
-        "bids_count": outcome.bids_count,
-    }
-    extras: dict[str, object] = {
-        "model": resolved.model,
-        "ref_number": resolved.ref_number,
-        "caliber": resolved.caliber,
-        "case_code": resolved.case_code,
-        "movement": resolved.movement,
-        "case_material": resolved.case_material,
-        "case_diameter_mm": resolved.case_diameter_mm,
-        "specs_json": json.dumps(resolved.specs or {}, sort_keys=True),
-        "ai_json": None,
-        "needs_review": resolved.needs_review,
-        "review_status": "pending",
-        "reviewed_at": None,
-        "override_json": (
-            json.dumps(override_json, sort_keys=True) if isinstance(override_json, (dict, list)) else override_json
-        ),
-        "description": row_description,
-    }
-    values.update(extras)
+    specs = dict(resolved.specs or {})
+    if not outcome.is_sold:
+        highest = outcome.hammer_eur or state.current_bid_eur
+        if highest is not None:
+            specs["highest_bid_eur"] = highest
     return Lot(
-        **values,
+        lot_id=row.lot_id, source=row.source, title=row.title, brand=resolved.brand,
+        model_key=resolved.model_key, condition_tag=condition, form=WatchForm.UNKNOWN,
+        hearts=state.favorite_count, sold=outcome.is_sold, hammer_eur=outcome.hammer_eur,
+        opened_at=state.opened_at, ended_at=state.ended_at, url=row.url, subtitle=row.subtitle,
+        bids_count=outcome.bids_count, model=resolved.model, ref_number=resolved.ref_number,
+        caliber=resolved.caliber, case_code=resolved.case_code, movement=resolved.movement,
+        case_material=resolved.case_material, case_diameter_mm=resolved.case_diameter_mm,
+        specs_json=json.dumps(specs, sort_keys=True), ai_json=None, needs_review=resolved.needs_review,
+        review_status="pending", reviewed_at=None,
+        override_json=json.dumps(override_json, sort_keys=True) if isinstance(override_json, (dict, list)) else override_json,
+        description=row_description,
     )
 
 
@@ -105,6 +156,7 @@ def settle(
     candidates: list[LiveWatchRow],
     *,
     fetch_details: Callable[[str], str | None] | None = None,
+    record_unclassified: bool = False,
 ) -> _Settlement:
     """Read final state for every candidate without writing anything."""
     by_id = {row.lot_id: row for row in candidates}
@@ -122,12 +174,8 @@ def settle(
                 result.still_open += 1
                 result.refreshed.append(
                     LiveWatchRow(
-                        lot_id=row.lot_id,
-                        source=row.source,
-                        title=row.title,
-                        subtitle=row.subtitle,
-                        url=row.url,
-                        bidding_end_at=state.ended_at,
+                        lot_id=row.lot_id, source=row.source, title=row.title,
+                        subtitle=row.subtitle, url=row.url, bidding_end_at=state.ended_at,
                     )
                 )
                 continue
@@ -147,20 +195,18 @@ def settle(
                 else:
                     page = None
                 lot = _settled_lot(
-                    row,
-                    state,
-                    outcome,
-                    rules,
-                    details=page,
+                    row, state, outcome, rules, details=page,
                     description=page.description if page is not None else None,
                 )
             except (FetchError, ScrapeError) as exc:
                 result.details_failed += 1
                 result.errors.append(f"{lot_id}: {exc}")
                 continue
-            except NormalizationError:
+            except NormalizationError as exc:
                 result.unclassified += 1
                 result.finished.append(lot_id)
+                if record_unclassified:
+                    result.lots.append(_unclassified_lot(row, state, outcome, rules, str(exc), page))
                 continue
             result.lots.append(lot)
             result.finished.append(lot_id)

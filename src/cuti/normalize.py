@@ -71,10 +71,16 @@ def detect_condition(title: str, rules: Rules) -> Condition | None:
 
 def _is_uncued_year(tokens: list[str], index: int) -> bool:
     token = tokens[index]
-    if len(token) != 4 or not token.isdigit():
-        return False
     previous = tokens[index - 1] if index else ""
-    return _YEAR_MIN <= int(token) <= _YEAR_MAX and previous not in _REFERENCE_CUES
+    if previous in _REFERENCE_CUES:
+        return False
+    if len(token) == 4 and token.isdigit():
+        return _YEAR_MIN <= int(token) <= _YEAR_MAX
+    if "-" in token:
+        parts = token.split("-")
+        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit() and len(parts[0]) == 4 and len(parts[1]) == 4:
+            return _YEAR_MIN <= int(parts[0]) <= _YEAR_MAX and _YEAR_MIN <= int(parts[1]) <= _YEAR_MAX
+    return False
 
 
 def _reference_tokens_from(tokens: list[str], rules: Rules) -> tuple[str, ...]:

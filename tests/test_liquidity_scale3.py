@@ -129,3 +129,21 @@ class LiquidityCliScale3Tests(ProjectTestCase):
             self.assertEqual(main([*args[0:4], "liquidity"]), 0)
         self.assertIn("status", text_output.getvalue().splitlines()[0])
         self.assertTrue(all("status" in row for row in payload["brands"]))
+
+    def test_excluded_groups_retain_descriptive_metrics(self) -> None:
+        from cuti.liquidity import compute_liquidity
+        lots = [
+            make_lot("thin-1", brand="tissot", ended_at=date(2026, 7, 10), sold=True, days_open=6, hearts=20, form=WatchForm.ROUND),
+            make_lot("thin-2", brand="tissot", ended_at=date(2026, 7, 12), sold=True, days_open=8, hearts=30, form=WatchForm.ROUND),
+        ]
+        self.seed_lots(lots)
+        report = compute_liquidity(self.conn, self.settings, date(2026, 8, 1))
+        self.assertEqual(len(report.brands), 0)
+        self.assertEqual(len(report.excluded_groups), 1)
+        group = report.excluded_groups[0]
+        brand, form, count = group
+        self.assertEqual((brand, form, count), ("tissot", WatchForm.ROUND, 2))
+        self.assertEqual(group.sold, 2)
+        self.assertEqual(group.sell_through, 1.0)
+        self.assertEqual(group.median_days_to_close, 7.0)
+        self.assertEqual(report.excluded_brands, (("tissot", 2),))
