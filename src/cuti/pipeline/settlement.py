@@ -56,51 +56,34 @@ def _condition_from_specs(details: object) -> Condition | None:
 
 
 def _unclassified_lot(
-    row: LiveWatchRow,
-    state: catawiki_api.LiveState,
-    outcome: catawiki_api.BiddingOutcome,
-    rules: Rules,
-    reason: str,
-    details: object = None,
+    row: LiveWatchRow, state: catawiki_api.LiveState, outcome: catawiki_api.BiddingOutcome,
+    rules: Rules, reason: str, details: object = None, *, source_available: bool = True, review_status: str = "pending",
 ) -> Lot:
     brand = None
     try:
         from ..normalize import detect_brand
         brand = detect_brand(row.title, rules)
-    except NormalizationError:
-        pass
-    if brand is None and details is not None:
-        brand = getattr(details, "brand", None)
+    except NormalizationError: pass
+    if brand is None and details is not None: brand = getattr(details, "brand", None)
     brand_val = brand or "unknown"
     specs: dict[str, object] = {"unclassified_reason": reason}
     highest = outcome.hammer_eur or state.current_bid_eur
-    if highest is not None:
-        specs["highest_bid_eur"] = highest
+    if highest is not None: specs["highest_bid_eur"] = highest
     if details is not None:
         detail_specs = getattr(details, "specs", None) or getattr(details, "details", None)
-        if isinstance(detail_specs, dict):
-            specs["details"] = dict(detail_specs)
+        if isinstance(detail_specs, dict): specs["details"] = dict(detail_specs)
+    sold = outcome.is_sold if source_available else False
     return Lot(
-        lot_id=row.lot_id,
-        source=row.source,
-        title=row.title,
-        brand=brand_val,
-        model_key=f"{brand_val}:unclassified",
-        condition_tag=Condition.NAKED,
-        form=WatchForm.UNKNOWN,
-        hearts=state.favorite_count,
-        sold=outcome.is_sold,
-        hammer_eur=outcome.hammer_eur,
-        opened_at=state.opened_at,
-        ended_at=state.ended_at,
-        url=row.url,
-        subtitle=row.subtitle,
-        bids_count=outcome.bids_count,
-        needs_review=1,
-        review_status="pending",
+        lot_id=row.lot_id, source=row.source, title=row.title, brand=brand_val,
+        model_key=f"{brand_val}:unclassified", condition_tag=Condition.NAKED, form=WatchForm.UNKNOWN,
+        hearts=state.favorite_count, sold=sold, hammer_eur=outcome.hammer_eur if sold else None,
+        opened_at=state.opened_at, ended_at=state.ended_at, url=row.url, subtitle=row.subtitle,
+        bids_count=outcome.bids_count, source_available=source_available,
+        needs_review=0 if review_status == "ignored" else 1, review_status=review_status,
         specs_json=json.dumps(specs, sort_keys=True),
         description=getattr(details, "description", None) if details is not None else None,
     )
+
 
 
 def _settled_lot(
@@ -157,14 +140,21 @@ def settle(
     *,
     fetch_details: Callable[[str], str | None] | None = None,
     record_unclassified: bool = False,
+    on_progress: Callable[[int, int, str], None] | None = None,
 ) -> _Settlement:
     """Read final state for every candidate without writing anything."""
     by_id = {row.lot_id: row for row in candidates}
     result = _Settlement(lots=[], finished=[], refreshed=[])
+    total_candidates = len(candidates)
+    current_idx = 0
     for batch in catawiki_api.chunks(list(by_id), settings.catawiki_batch_size):
         states = client.live_states(batch)
         for lot_id in batch:
+            current_idx += 1
+            if on_progress is not None:
+                on_progress(current_idx, total_candidates, lot_id)
             row = by_id[lot_id]
+
             state = states.get(lot_id)
             if state is None:
                 result.vanished += 1
@@ -200,6 +190,13 @@ def settle(
                 )
             except (FetchError, ScrapeError) as exc:
                 result.details_failed += 1
+                if "404" in str(exc):
+                    result.finished.append(lot_id)
+                    result.lots.append(_unclassified_lot(
+                        row, state, outcome, rules, f"lot_removed_by_source ({exc})",
+                        source_available=False, review_status="ignored",
+                    ))
+                    continue
                 result.errors.append(f"{lot_id}: {exc}")
                 continue
             except NormalizationError as exc:

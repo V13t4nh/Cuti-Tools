@@ -14,16 +14,11 @@ from ..fetch import fetch_text, probe_url
 from ..normalize import Rules
 from ..scrapers import catawiki_api
 from .settlement import persist, settle
-from ..storage import (
-    LiveWatchRow,
-    count_live_watch,
-    fetch_live_watch_due,
-    fetch_lots_for_source_check,
-    mark_source_availability,
-    upsert_live_watch,
-    upsert_live_watch_with_images,
-)
+from ..storage import (LiveWatchRow, count_live_watch, fetch_live_watch_due,
+                       fetch_lots_for_source_check, mark_source_availability,
+                       upsert_live_watch, upsert_live_watch_with_images)
 from .details import build_lot_url, fetch_lot_page
+
 
 @dataclass(frozen=True, slots=True)
 class WatchLiveReport:
@@ -112,6 +107,7 @@ def settle_lots(
     api: catawiki_api.CatawikiApi | None = None,
     record_unclassified: bool = False,
     max_rounds: int = 1,
+    on_progress: Callable[[int, int, str], None] | None = None,
 ) -> SettleReport:
     """Phase 2: read the hammer price of every tracked lot that has closed."""
     client = _catawiki_client(settings, api)
@@ -124,36 +120,40 @@ def settle_lots(
         candidates = fetch_live_watch_due(conn, until=today, limit=settings.settle_max_lots)
         if not candidates:
             break
+        print(f"[SETTLE] Round {round_count}: Processing {len(candidates)} overdue lots...", flush=True)
+
+        def _default_progress(idx: int, total: int, lot_id: str) -> None:
+            if idx == 1 or idx % 10 == 0 or idx == total:
+                print(f"  [SETTLE PROGRESS] Round {round_count}: Lot {idx}/{total} (lot={lot_id})", flush=True)
+
+        progress_cb = on_progress or _default_progress
         details = _lot_page_fetcher(candidates, settings) if settings.details_enabled else None
         settlement = settle(
             client, rules, settings, candidates,
             fetch_details=details, record_unclassified=record_unclassified,
+            on_progress=progress_cb,
         )
         written = persist(conn, settlement, now)
+        print(
+            f"[SETTLE ROUND {round_count}] Finished {len(candidates)} lots | Written: {written} | "
+            f"Sold: {settlement.sold} | Unsold: {settlement.unsold} | Open: {settlement.still_open}",
+            flush=True,
+        )
         tot_candidates += len(candidates)
-        tot_sold += settlement.sold
-        tot_unsold += settlement.unsold
-        tot_still_open += settlement.still_open
-        tot_vanished += settlement.vanished
-        tot_unclass += settlement.unclassified
-        tot_details_failed += settlement.details_failed
-        tot_written += written
+        tot_sold += settlement.sold; tot_unsold += settlement.unsold; tot_still_open += settlement.still_open
+        tot_vanished += settlement.vanished; tot_unclass += settlement.unclassified
+        tot_details_failed += settlement.details_failed; tot_written += written
         all_errors.extend(settlement.errors)
         if not settlement.finished and not written:
             break
+
     return SettleReport(
-        candidates=tot_candidates,
-        sold=tot_sold,
-        unsold=tot_unsold,
-        still_open=tot_still_open,
-        vanished=tot_vanished,
-        unclassified=tot_unclass,
-        details_failed=tot_details_failed,
-        errors=tuple(all_errors),
-        lots_written=tot_written,
-        queue_remaining=count_live_watch(conn),
+        candidates=tot_candidates, sold=tot_sold, unsold=tot_unsold, still_open=tot_still_open,
+        vanished=tot_vanished, unclassified=tot_unclass, details_failed=tot_details_failed,
+        errors=tuple(all_errors), lots_written=tot_written, queue_remaining=count_live_watch(conn),
         requests_made=client.requests_made,
     )
+
 
 
 def ingest_one_lot(

@@ -23,7 +23,7 @@ from cuti.storage import (
 from cuti.storage.schema_ddl import SCHEMA_SQL
 from cuti.pipeline.report import watch_live
 from cuti.scrapers import catawiki_api
-from cuti.telegram_media import process_lot_image_queue, queue_lot_images
+from cuti.telegram_media import process_lot_image_queue, queue_lot_images, upload_image_to_telegram
 from daily_crawl_harness import FakeClock, FakeTelegramTransport, block_network, callback_transport
 from support import settings_for
 
@@ -283,6 +283,128 @@ class DurableQueueRegressionTests(unittest.TestCase):
                 worker_id="worker-b",
             )
         self.assertEqual(len(transport.calls), 2)
+
+    def test_telegram_429_with_retry_after_sleeps_and_schedules_backoff(self) -> None:
+        settings = settings_for(
+            self.temp_dir,
+            CUTI_TELEGRAM_BOT_TOKEN="fake-bot-token",
+            CUTI_TELEGRAM_CHAT_ID="-1000000000000",
+            CUTI_TELEGRAM_UPLOAD_PAUSE_SECONDS="1",
+            CUTI_TELEGRAM_UPLOAD_MAX_ATTEMPTS="3",
+            CUTI_TELEGRAM_UPLOAD_MAX_BACKOFF_SECONDS="60",
+            CUTI_TELEGRAM_UPLOAD_LEASE_SECONDS="30",
+        )
+        self._queue("429-lot", "https://source.invalid/429.jpg")
+        transport = FakeTelegramTransport(
+            [MediaUploadError("Telegram sendPhoto returned HTTP 429", retry_after=5.0)]
+        )
+        clock = FakeClock()
+        with patch(
+            "cuti.telegram_media.upload_image_to_telegram",
+            side_effect=callback_transport(transport),
+        ):
+            report = process_lot_image_queue(
+                self.conn, settings, NOW, worker_id="worker-a", sleep=clock.sleep
+            )
+        self.assertEqual(report["failed"][0]["state"], "retryable_error")
+        self.assertEqual(clock.sleeps, [6.0], "worker must sleep retry_after + 1 second")
+        row = fetch_lot_image(self.conn, "429-lot")
+        self.assertEqual(row["state"], "retryable_error")
+        self.assertEqual(row["next_attempt_at"], (NOW + timedelta(seconds=6)).isoformat())
+
+
+    def test_upload_image_to_telegram_parses_retry_after_from_429_body(self) -> None:
+        import io
+        import urllib.error
+        settings = settings_for(
+            self.temp_dir,
+            CUTI_TELEGRAM_BOT_TOKEN="fake-bot-token",
+            CUTI_TELEGRAM_CHAT_ID="-1000000000000",
+        )
+        body = b'{"ok":false,"error_code":429,"description":"Too Many Requests: retry after 8","parameters":{"retry_after":8}}'
+        err = urllib.error.HTTPError(
+            url="https://api.telegram.org",
+            code=429,
+            msg="Too Many Requests",
+            hdrs={},
+            fp=io.BytesIO(body),
+        )
+        with patch("urllib.request.urlopen", side_effect=err):
+            with self.assertRaises(MediaUploadError) as ctx:
+                upload_image_to_telegram("https://source.invalid/photo.jpg", "caption", settings)
+        self.assertEqual(ctx.exception.retry_after, 8.0)
+        self.assertIn("HTTP 429", str(ctx.exception))
+
+    def test_upload_image_to_telegram_retries_with_cache_buster_on_400_content_failure(self) -> None:
+        import io
+        import urllib.error
+        settings = settings_for(
+            self.temp_dir,
+            CUTI_TELEGRAM_BOT_TOKEN="fake-bot-token",
+            CUTI_TELEGRAM_CHAT_ID="-1000000000000",
+        )
+        err_body = b'{"ok":false,"error_code":400,"description":"Bad Request: failed to get HTTP URL content"}'
+        err = urllib.error.HTTPError(
+            url="https://api.telegram.org",
+            code=400,
+            msg="Bad Request",
+            hdrs={},
+            fp=io.BytesIO(err_body),
+        )
+
+        class MockSuccessResp:
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+            def read(self):
+                return b'{"ok":true,"result":{"message_id":456,"photo":[{"file_id":"busted-fid-1"}]}}'
+
+        calls = []
+        def mock_urlopen(req, timeout=10):
+            calls.append(req)
+            if len(calls) == 1:
+                raise err
+            return MockSuccessResp()
+
+        with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+            res = upload_image_to_telegram("https://source.invalid/photo.jpg", "caption", settings)
+
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(res["file_id"], "busted-fid-1")
+        first_payload = json.loads(calls[0].data.decode("utf-8"))
+        second_payload = json.loads(calls[1].data.decode("utf-8"))
+        self.assertEqual(first_payload["photo"], "https://source.invalid/photo.jpg")
+        self.assertIn("cb=", second_payload["photo"])
+
+    def test_retryable_treats_failed_to_get_content_as_retryable(self) -> None:
+        from cuti.telegram_media import _retryable
+        err = MediaUploadError("Telegram sendPhoto returned HTTP 400: Bad Request: failed to get HTTP URL content")
+        self.assertTrue(_retryable(err))
+        other_400 = MediaUploadError("Telegram sendPhoto returned HTTP 400: Bad Request: chat not found")
+        self.assertFalse(_retryable(other_400))
+
+    def test_recover_permanent_image_failures(self) -> None:
+        from cuti.daily import recover_permanent_image_failures
+        from cuti.storage.media import upsert_lot_image
+        db_path = self.temp_dir / "recover_test.db"
+        with connect(db_path) as conn:
+            upsert_lot_image(conn, lot_id="lot-1", idx=0, source_url="https://source.invalid/photo.jpg")
+            conn.execute("UPDATE lot_images SET state = 'permanent_error', last_error = 'failed'")
+
+        settings = settings_for(
+            self.temp_dir,
+            CUTI_TELEGRAM_BOT_TOKEN="fake-bot-token",
+            CUTI_TELEGRAM_CHAT_ID="-1000000000000",
+        )
+        fake_res = {"file_id": "rec-fid-1", "file_path": "path", "message_id": 999}
+        with connect(db_path) as conn:
+            with patch("cuti.telegram_media.upload_image_to_telegram", return_value=fake_res):
+                count = recover_permanent_image_failures(conn, settings, datetime(2026, 8, 1, tzinfo=timezone.utc))
+            self.assertEqual(count, 1)
+            row = conn.execute("SELECT state, telegram_file_id FROM lot_images WHERE lot_id = 'lot-1'").fetchone()
+            self.assertEqual(row[0], "ready")
+            self.assertEqual(row[1], "rec-fid-1")
 
 
 if __name__ == "__main__":

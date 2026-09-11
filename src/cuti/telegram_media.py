@@ -27,21 +27,60 @@ def require_telegram_credentials(settings: Settings) -> tuple[str, str]:
     return token, chat_id
 
 
+def _parse_retry_after(exc: urllib.error.HTTPError, body: bytes | None = None) -> float | None:
+    """Extract retry_after seconds from HTTP 429 Retry-After header or JSON body."""
+    if exc.code != 429:
+        return None
+    if exc.headers and (raw := exc.headers.get("Retry-After")):
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            pass
+    try:
+        raw_body = body if body is not None else exc.read()
+        payload = json.loads(raw_body.decode("utf-8") if isinstance(raw_body, bytes) else raw_body)
+        if isinstance(payload, dict) and (params := payload.get("parameters")):
+            return float(params["retry_after"])
+    except Exception:
+        pass
+    return None
+
+
 def upload_image_to_telegram(image_source: str, caption: str, settings: Settings) -> dict[str, Any]:
     """Ask Telegram to fetch a public image URL; never download the source locally."""
     token, chat_id = require_telegram_credentials(settings)
     if not isinstance(image_source, str) or not image_source.startswith(("http://", "https://")):
         raise MediaUploadError("image source must be an HTTP(S) URL")
     api_url = f"{settings.telegram_api_base}/bot{token}/sendPhoto"
-    payload = json.dumps({"chat_id": chat_id, "photo": image_source, "caption": caption[:1024]}).encode("utf-8")
-    req = urllib.request.Request(api_url, data=payload, headers={"Content-Type": "application/json", "User-Agent": "Cuti/1.0"})
+
+    def _post(url: str) -> dict[str, Any]:
+        payload = json.dumps({"chat_id": chat_id, "photo": url, "caption": caption[:1024]}).encode("utf-8")
+        req = urllib.request.Request(api_url, data=payload, headers={"Content-Type": "application/json", "User-Agent": "Cuti/1.0"})
+        try:
+            with urllib.request.urlopen(req, timeout=settings.http_timeout_seconds) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            body, desc = b"", ""
+            try:
+                body = exc.read()
+                desc = json.loads(body.decode("utf-8")).get("description", "")
+            except Exception:
+                pass
+            detail = f": {desc}" if desc else ""
+            raise MediaUploadError(f"Telegram sendPhoto returned HTTP {exc.code}{detail}", retry_after=_parse_retry_after(exc, body)) from None
+        except (urllib.error.URLError, TimeoutError, OSError, UnicodeDecodeError, json.JSONDecodeError):
+            raise MediaUploadError("Telegram sendPhoto request failed") from None
+
     try:
-        with urllib.request.urlopen(req, timeout=settings.http_timeout_seconds) as resp:
-            response = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        raise MediaUploadError(f"Telegram sendPhoto returned HTTP {exc.code}") from None
-    except (urllib.error.URLError, TimeoutError, OSError, UnicodeDecodeError, json.JSONDecodeError):
-        raise MediaUploadError("Telegram sendPhoto request failed") from None
+        response = _post(image_source)
+    except MediaUploadError as exc:
+        err_msg = str(exc).lower()
+        if "failed to get http url content" in err_msg or ("http 400" in err_msg and "cb=" not in image_source):
+            sep = "&" if "?" in image_source else "?"
+            response = _post(f"{image_source}{sep}cb={int(time.time())}")
+        else:
+            raise
+
     if not isinstance(response, dict) or not response.get("ok"):
         description = response.get("description") if isinstance(response, dict) else None
         detail = f": {description}" if isinstance(description, str) and description else ""
@@ -91,12 +130,12 @@ def upload_lot_images(conn: sqlite3.Connection, lot_id: str, title: str, image_u
 
 def _retryable(error: MediaUploadError) -> bool:
     text = str(error).lower()
-    if "request failed" in text or "timeout" in text or "429" in text:
+    if "request failed" in text or "timeout" in text or "429" in text or "failed to get http url content" in text:
         return True
     marker = "http "
     if marker in text:
         try:
-            code = int(text.split(marker, 1)[1].split()[0])
+            code = int(text.split(marker, 1)[1].split()[0].rstrip(":,"))
             return code == 429 or code >= 500
         except (IndexError, ValueError):
             return False
@@ -129,13 +168,18 @@ def process_lot_image_queue(conn: sqlite3.Connection, settings: Settings, now: d
                                  message_id=result.get("message_id"), uploaded_at=now)
             uploaded += 1
         except MediaUploadError as exc:
+            retry_after = getattr(exc, "retry_after", None)
             state = mark_lot_image_failed(conn, lot_id=row["lot_id"], idx=row["idx"], worker_id=worker,
                                           error=str(exc), now=now, retryable=_retryable(exc),
                                           max_attempts=settings.telegram_upload_max_attempts,
                                           base_pause_seconds=settings.telegram_upload_pause_seconds,
-                                          max_backoff_seconds=settings.telegram_upload_max_backoff_seconds)
+                                          max_backoff_seconds=settings.telegram_upload_max_backoff_seconds,
+                                          retry_after=retry_after)
             failed.append({"lot_id": row["lot_id"], "idx": row["idx"], "state": state, "error": str(exc)})
+            if retry_after is not None and retry_after > 0:
+                sleep(retry_after + 1.0)
     return {"candidates": uploaded + len(failed), "uploaded": uploaded, "failed": failed}
+
 
 
 def cover_metadata(image: dict[str, Any] | None) -> dict[str, Any]:
@@ -153,7 +197,24 @@ def cover_metadata(image: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def format_lot_images(images: list[dict[str, Any]], _settings: Settings) -> list[dict[str, Any]]:
-    """Format the legacy image collection without exposing Telegram credentials."""
-    return [{**cover_metadata(img), "lot_id": img["lot_id"], "idx": img["idx"],
-             "telegram_file_id": img["telegram_file_id"], "telegram_file_path": img["telegram_file_path"],
-             "uploaded_at": img["uploaded_at"], "direct_url": cover_metadata(img)["url"]} for img in images]
+    """Format images: idx=0 uses same-origin cover route, idx>=1 uses direct CDN URLs when ready."""
+    formatted = []
+    for img in images:
+        idx = img.get("idx", 0)
+        meta = cover_metadata(img)
+        item = {
+            **meta,
+            "lot_id": img["lot_id"],
+            "idx": idx,
+            "telegram_file_id": img.get("telegram_file_id"),
+            "telegram_file_path": img.get("telegram_file_path"),
+            "uploaded_at": img.get("uploaded_at"),
+            "direct_url": meta["url"],
+        }
+        if idx > 0 and meta["state"] == "ready" and not img.get("telegram_file_id"):
+            src_url = img.get("source_url")
+            item["url"] = src_url
+            item["direct_url"] = src_url
+            item["source_url"] = src_url
+        formatted.append(item)
+    return formatted

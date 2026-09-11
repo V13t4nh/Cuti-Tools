@@ -15,6 +15,7 @@ import re
 import sqlite3
 import sys
 import zlib
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -98,36 +99,27 @@ Output strictly valid JSON as a JSON ARRAY inside a ```json ... ``` codeblock ad
 """
 
 
-def load_cookies() -> tuple[str, str]:
-    """Load __Secure-1PSID and __Secure-1PSIDTS from environment or file."""
-    psid = os.getenv("GEMINI_SECURE_1PSID") or os.getenv("SECURE_1PSID") or ""
-    psidts = os.getenv("GEMINI_SECURE_1PSIDTS") or os.getenv("SECURE_1PSIDTS") or ""
+try:
+    from run_llm_refine import load_cookie_accounts
+except ImportError:
+    from scripts.run_llm_refine import load_cookie_accounts
 
-    if (not psid or not psidts) and COOKIE_FILE_PATH.is_file():
-        try:
-            data = json.loads(COOKIE_FILE_PATH.read_text(encoding="utf-8"))
-            psid = psid or data.get("__Secure-1PSID", "") or data.get("Secure_1PSID", "")
-            psidts = psidts or data.get("__Secure-1PSIDTS", "") or data.get("Secure_1PSIDTS", "")
-        except Exception:
-            pass
 
-    if (not psid or not psidts) and ENV_FILE_PATH.is_file():
-        try:
-            for line in ENV_FILE_PATH.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                k, v = line.split("=", 1)
-                k = k.strip()
-                v = v.strip().strip('"').strip("'")
-                if k in ("GEMINI_SECURE_1PSID", "SECURE_1PSID", "__Secure-1PSID"):
-                    psid = psid or v
-                elif k in ("GEMINI_SECURE_1PSIDTS", "SECURE_1PSIDTS", "__Secure-1PSIDTS"):
-                    psidts = psidts or v
-        except Exception:
-            pass
+def load_cookies(account: str | None = None) -> tuple[str, str, str]:
+    """Load __Secure-1PSID and __Secure-1PSIDTS for a given account.
 
-    return psid.strip(), psidts.strip()
+    Returns:
+        (account_name, psid, psidts)
+    """
+    accounts = load_cookie_accounts(COOKIE_FILE_PATH)
+    if not accounts:
+        return "", "", ""
+    if account:
+        for acc in accounts:
+            if acc.get("name", "").lower() == account.lower() or acc.get("account", "").lower() == account.lower():
+                return acc["name"], acc["psid"], acc["psidts"]
+        print(f"[!] Account '{account}' not found in cookie accounts, using '{accounts[0]['name']}'.")
+    return accounts[0]["name"], accounts[0]["psid"], accounts[0]["psidts"]
 
 
 def fetch_lots(
@@ -310,7 +302,7 @@ async def run_gemini_query(
         )
 
     client = GeminiClient(psid, psidts, proxy=None)
-    await client.init(timeout=30, auto_close=False, auto_refresh=True)
+    await client.init(timeout=90, auto_close=False, auto_refresh=True)
 
     full_prompt = f"{SYSTEM_PROMPT}\n\n{prompt}"
     for attempt in range(max_retries + 1):
@@ -367,6 +359,7 @@ def apply_refinement_to_db(
     true_tag = accessories.get("true_condition_tag")
     confidence = audit.get("confidence", "medium")
     should_resolve = confidence == "high"
+    now_iso = datetime.now(timezone.utc).isoformat()
 
     with conn:
         conn.execute(
@@ -383,8 +376,8 @@ def apply_refinement_to_db(
                 condition_tag = CASE WHEN ? IS NOT NULL AND ? IN ('naked', 'box', 'papers', 'fullset') THEN ? ELSE condition_tag END,
                 needs_review = CASE WHEN ? = 1 THEN 0 ELSE needs_review END,
                 review_status = CASE WHEN ? = 1 THEN 'resolved' ELSE review_status END,
-                reviewed_at = CASE WHEN ? = 1 THEN datetime('now') ELSE reviewed_at END,
-                updated_at = datetime('now')
+                reviewed_at = CASE WHEN ? = 1 THEN ? ELSE reviewed_at END,
+                updated_at = ?
             WHERE lot_id = ?
             """,
             (
@@ -403,6 +396,8 @@ def apply_refinement_to_db(
                 1 if should_resolve else 0,
                 1 if should_resolve else 0,
                 1 if should_resolve else 0,
+                now_iso,
+                now_iso,
                 str(lot_id),
             ),
         )
@@ -417,6 +412,7 @@ def main() -> None:
     parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH, help="Path to SQLite auctions.db")
     parser.add_argument("--model", type=str, default="gemini-flash", help="Gemini model (default: gemini-flash)")
     parser.add_argument("--dry-run", action="store_true", help="Print prompt without calling Gemini Web API")
+    parser.add_argument("--account", type=str, default=None, help="Cookie account name to use (e.g. acc_1, acc_2)")
     parser.add_argument("--update-db", action="store_true", help="Apply results to SQLite database")
     args = parser.parse_args()
 
@@ -451,14 +447,14 @@ def main() -> None:
         print("[*] Dry run completed. No API request was made.")
         return
 
-    psid, psidts = load_cookies()
+    acc_name, psid, psidts = load_cookies(account=args.account)
     if not psid or not psidts:
         print("\n[!] ERROR: Missing Gemini Web authentication cookies!")
         print("    Please set GEMINI_SECURE_1PSID and GEMINI_SECURE_1PSIDTS in .env")
         print(f"    Or create '{COOKIE_FILE_PATH}' with __Secure-1PSID and __Secure-1PSIDTS.")
         sys.exit(1)
 
-    print(f"[*] Dispatching batch of {len(lots)} lots to Gemini Web ({args.model})...")
+    print(f"[*] Dispatching batch of {len(lots)} lots to Gemini Web ({args.model}) using account '{acc_name}'...")
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

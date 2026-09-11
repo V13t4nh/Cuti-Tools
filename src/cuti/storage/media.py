@@ -103,6 +103,9 @@ def find_lot_ids_missing_cover(conn: sqlite3.Connection) -> list[str]:
     return [lot_id for lot_id, _source in find_lots_missing_cover(conn)]
 
 
+from .gallery import find_lots_missing_gallery, upsert_lot_gallery_images
+
+
 def claim_lot_image(conn: sqlite3.Connection, *, worker_id: str, now: datetime, lease_seconds: float) -> dict[str, Any] | None:
     """Recover expired claims and atomically claim one eligible queue row."""
     if not worker_id.strip() or lease_seconds <= 0:
@@ -174,7 +177,8 @@ def mark_lot_image_ready(conn: sqlite3.Connection, *, lot_id: str, idx: int, wor
 
 def mark_lot_image_failed(conn: sqlite3.Connection, *, lot_id: str, idx: int, worker_id: str,
                           error: str, now: datetime, retryable: bool, max_attempts: int,
-                          base_pause_seconds: float, max_backoff_seconds: float) -> str:
+                          base_pause_seconds: float, max_backoff_seconds: float,
+                          retry_after: float | None = None) -> str:
     """Persist a typed failure and bounded exponential retry schedule."""
     row = conn.execute("SELECT attempts FROM lot_images WHERE lot_id = ? AND idx = ? AND state = 'uploading' AND lease_owner = ?", (lot_id, idx, worker_id)).fetchone()
     if row is None:
@@ -182,6 +186,8 @@ def mark_lot_image_failed(conn: sqlite3.Connection, *, lot_id: str, idx: int, wo
     attempts = row[0]
     state = "retryable_error" if retryable and attempts < max_attempts else "permanent_error"
     delay = min(max_backoff_seconds, base_pause_seconds * (2 ** min(max(attempts - 1, 0), 30)))
+    if retry_after is not None and retry_after > 0:
+        delay = max(delay, retry_after + 1.0)
     next_at = _iso(now + timedelta(seconds=delay)) if state == "retryable_error" else None
     conn.execute(
         """UPDATE lot_images SET state = ?, last_error = ?, next_attempt_at = ?,
@@ -191,6 +197,7 @@ def mark_lot_image_failed(conn: sqlite3.Connection, *, lot_id: str, idx: int, wo
     )
     conn.commit()
     return state
+
 
 
 def count_lot_images(conn: sqlite3.Connection) -> dict[str, int]:

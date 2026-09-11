@@ -43,6 +43,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="maximum images per active batch (default: 20)")
     parser.add_argument("--poll-seconds", type=_positive_float, default=30.0,
                         help="seconds to sleep when the queue is idle (default: 30)")
+    parser.add_argument("--until-empty", action="store_true",
+                        help="stop and exit cleanly when no queued images remain")
     return parser.parse_args(argv)
 
 
@@ -75,13 +77,14 @@ def _wait_or_parent_exit(parent_connection: object | None, seconds: float) -> st
             return "parent-dead"
 
 
-def _run(settings: object, limit: int, poll_seconds: float, parent_connection: object | None = None) -> int:
+def _run(settings: object, limit: int, poll_seconds: float, parent_connection: object | None = None, until_empty: bool = False) -> int:
     lock_path = settings.db_path.with_suffix(settings.db_path.suffix + ".image.lock")
     with process_lock(lock_path, "image worker is already running"), connect(settings.db_path) as conn:
         require_telegram_credentials(settings)
         if parent_connection is not None:
             parent_connection.send("ready")
         print(f"[START] Image worker running (limit={limit}, poll_seconds={poll_seconds:g})", flush=True)
+        was_idle = False
         while True:
             status = _control_status(parent_connection)
             if status == "stop":
@@ -93,21 +96,29 @@ def _run(settings: object, limit: int, poll_seconds: float, parent_connection: o
             now = datetime.now(timezone.utc)
             result = process_lot_image_queue(conn, settings, now, limit=limit)
             failed = result["failed"]
-            print(
-                f"[BATCH] Candidates: {result['candidates']}, Uploaded: {result['uploaded']}, "
-                f"Failed: {len(failed)}",
-                flush=True,
-            )
-            for item in failed:
+            if result["candidates"]:
+                was_idle = False
                 print(
-                    f"[FAIL] lot={item['lot_id']} idx={item['idx']} "
-                    f"state={item['state']} error={item['error']}",
-                    file=sys.stderr,
+                    f"[BATCH] Candidates: {result['candidates']}, Uploaded: {result['uploaded']}, "
+                    f"Failed: {len(failed)}",
                     flush=True,
                 )
-            if result["candidates"]:
+                for item in failed:
+                    print(
+                        f"[FAIL] lot={item['lot_id']} idx={item['idx']} "
+                        f"state={item['state']} error={item['error']}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
                 continue
-            print(f"[IDLE] No queued images; sleeping {poll_seconds:g}s", flush=True)
+
+            if until_empty:
+                print("[IDLE] No queued images. Worker completed.", flush=True)
+                return 0
+
+            if not was_idle:
+                print(f"[IDLE] No queued images; sleeping {poll_seconds:g}s", flush=True)
+                was_idle = True
             status = _wait_or_parent_exit(parent_connection, poll_seconds)
             if status == "stop":
                 print("[STOP] Daily parent requested worker shutdown", flush=True)
@@ -148,7 +159,7 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     try:
         settings = load_settings(base_dir=PROJECT_ROOT)
-        return _run(settings, args.limit, args.poll_seconds)
+        return _run(settings, args.limit, args.poll_seconds, until_empty=args.until_empty)
     except ProcessLockBusy as exc:
         print(f"[BUSY] {exc}", file=sys.stderr)
         return 2

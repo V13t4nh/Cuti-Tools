@@ -72,6 +72,7 @@ class Settings:
     telegram_upload_max_backoff_seconds: float
     telegram_upload_lease_seconds: float
     report_path: Path
+    gallery_reconcile_limit: int = 20
     pricing_profile: object | None = None
 
     @property

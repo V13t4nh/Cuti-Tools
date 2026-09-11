@@ -14,7 +14,9 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from cuti.config import load_settings
-from cuti.daily import ReconcileReport, queue_is_drained, queue_state, reconcile_missing_lot_images
+from cuti.daily import (GalleryReconcileReport, ReconcileReport, queue_is_drained,
+                        queue_state, reconcile_missing_lot_galleries,
+                        reconcile_missing_lot_images, recover_permanent_image_failures)
 from cuti.errors import FetchError, NormalizationError, ScrapeError
 from cuti.normalize import load_rules
 from cuti.storage import connect, count_lot_images
@@ -66,6 +68,18 @@ def _print_reconcile(report: ReconcileReport) -> None:
         print(f"[UNRESOLVED] lot={lot_id} missing cover", file=sys.stderr, flush=True)
     for error in report.failures:
         print(f"[UNRESOLVED] {error}", file=sys.stderr, flush=True)
+
+
+def _print_gallery_reconcile(report: GalleryReconcileReport) -> None:
+    print(
+        f"[GALLERY] Candidates: {report.candidates}, Resolved: {report.resolved}, "
+        f"Images Added: {report.images_stored}, Missing: {len(report.missing)}, "
+        f"Failures: {len(report.failures)}", flush=True,
+    )
+    for lot_id in report.missing:
+        print(f"[UNRESOLVED GALLERY] lot={lot_id} missing gallery in HTML", file=sys.stderr, flush=True)
+    for error in report.failures:
+        print(f"[UNRESOLVED GALLERY] {error}", file=sys.stderr, flush=True)
 
 
 def _wait_for_drain(
@@ -147,7 +161,7 @@ def _run_refine(conn: Any, settings: Any) -> list[str]:
             conn,
             cookie_path=cookie_path,
             batch_size=3,
-            delay=1.5,
+            delay=2.0,
             model="gemini-flash",
             should_update=True,
         )
@@ -188,6 +202,12 @@ def run_daily(*, settings: Any = None, now: datetime | None = None, api: Any = N
                         errors.append("image reconciliation incomplete")
                 except Exception as exc:
                     errors.append(f"image reconciliation failed: {exc}")
+                try:
+                    gallery_limit = getattr(settings, "gallery_reconcile_limit", 20)
+                    gallery_report = reconcile_missing_lot_galleries(conn, settings, now, limit=gallery_limit)
+                    _print_gallery_reconcile(gallery_report)
+                except Exception as exc:
+                    errors.append(f"gallery reconciliation failed: {exc}")
                 if not producer_ok:
                     errors.append("producer incomplete")
                 worker_error = _wait_for_drain(conn, worker, sleep)
@@ -195,7 +215,14 @@ def run_daily(*, settings: Any = None, now: datetime | None = None, api: Any = N
                     errors.append(worker_error)
                 print(f"[IMAGES] {queue_state(conn)}", flush=True)
                 if count_lot_images(conn)["permanent_error"]:
+                    recovered = recover_permanent_image_failures(conn, settings, now)
+                    if recovered:
+                        print(f"[IMAGES] Recovered {recovered} failed image(s) via cache-busting retry", flush=True)
+                if count_lot_images(conn)["permanent_error"]:
                     errors.append("permanent image failures remain")
+                _stop_worker(worker, parent_connection)
+                worker = None
+                parent_connection = None
                 refine_errors = _run_refine(conn, settings)
                 errors.extend(refine_errors)
     except ProcessLockBusy as exc:

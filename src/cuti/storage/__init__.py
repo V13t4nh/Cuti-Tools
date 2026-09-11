@@ -39,6 +39,7 @@ from .watch import (
 )
 from .media import (claim_lot_image, count_lot_images, fetch_lot_image, fetch_lot_images,
                     find_lot_ids_missing_cover, find_lots_missing_cover,
+                    find_lots_missing_gallery, upsert_lot_gallery_images,
                     mark_lot_image_failed, mark_lot_image_ready, upsert_lot_image)
 from .user_items import (
     TrackedDeal,
@@ -68,6 +69,7 @@ __all__ = [
     "upsert_lot_image", "fetch_lot_image", "fetch_lot_images", "count_lot_images",
     "find_lots_missing_cover",
     "find_lot_ids_missing_cover",
+    "find_lots_missing_gallery", "upsert_lot_gallery_images",
     "claim_lot_image", "mark_lot_image_ready", "mark_lot_image_failed",
     "upsert_lots",
     "fetch_lots_for_model",

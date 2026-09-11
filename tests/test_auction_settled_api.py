@@ -155,6 +155,70 @@ class AuctionSettledApiTests(unittest.TestCase):
         self.assertEqual(detail_lot["needs_review"], 1)
         self.assertEqual(detail_lot["unclassified_reason"], "title states no condition")
 
+    def test_query_cancelled_settled_lot(self) -> None:
+        import json
+
+        self.conn.execute(
+            """
+            INSERT INTO lots (
+                lot_id, source, title, brand, model_key, condition_tag, form,
+                hearts, sold, hammer_eur, opened_at, ended_at, url, subtitle,
+                bids_count, needs_review, source_available, review_status, specs_json, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "settled-cancelled-003",
+                "catawiki",
+                "Ulysse Nardin - Freak Diavolo Rolf 75",
+                "ulysse nardin",
+                "ulysse nardin:unclassified",
+                "naked",
+                "unknown",
+                3,
+                0,
+                None,
+                "2026-08-20",
+                "2026-08-30",
+                "https://example.com/l/settled-cancelled-003",
+                "Gold",
+                0,
+                0,
+                "__NO__",
+                "ignored",
+                json.dumps(
+                    {
+                        "unclassified_reason": "lot_removed_by_source (HTTP 404)"
+                    }
+                ),
+                "2026-08-30T20:00:00Z",
+            ),
+        )
+        self.conn.commit()
+        status, payload = get(
+            self.conn,
+            self.settings,
+            "/api/auction-lots",
+            {"status": ["settled"], "q": ["Freak"]},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(len(payload["lots"]), 1)
+        lot = payload["lots"][0]
+        self.assertEqual(lot["lot_id"], "settled-cancelled-003")
+        self.assertFalse(lot["source_available"])
+        self.assertEqual(lot["review_status"], "ignored")
+        self.assertEqual(
+            lot["unclassified_reason"], "lot_removed_by_source (HTTP 404)"
+        )
+
+        status, detail_payload = get(
+            self.conn, self.settings, "/api/auction-lots/settled-cancelled-003", {}
+        )
+        self.assertEqual(status, 200)
+        detail_lot = detail_payload["lot"]
+        self.assertFalse(detail_lot["source_available"])
+        self.assertEqual(detail_lot["review_status"], "ignored")
+
 
 if __name__ == "__main__":
     unittest.main()
+

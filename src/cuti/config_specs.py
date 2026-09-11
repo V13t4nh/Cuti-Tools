@@ -165,6 +165,7 @@ SETTING_SPECS = (
     SettingSpec("CUTI_TELEGRAM_UPLOAD_MAX_BACKOFF_SECONDS", "telegram_upload_max_backoff_seconds", float, "60", _positive),
     SettingSpec("CUTI_TELEGRAM_UPLOAD_LEASE_SECONDS", "telegram_upload_lease_seconds", float, "300", _positive),
     SettingSpec("CUTI_REPORT_PATH", "report_path", str, "var/report.html", _nonempty, _path),
+    SettingSpec("CUTI_GALLERY_RECONCILE_LIMIT", "gallery_reconcile_limit", int, "20", _at_least_one),
 )
 
 DEFAULTS = {spec.name: spec.default for spec in SETTING_SPECS}

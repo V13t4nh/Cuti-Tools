@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "CUTI-Tools System Architecture",
+    "output": "architecture.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "decision-path",
+        "label": "Deal evaluation flow",
+        "focus": ["operator", "frontend", "api", "pricing", "matcher", "db"],
+        "note": "Primary user journey: search product, match comparables, compute net proceeds, and evaluate verdict."
+      },
+      {
+        "id": "ingest-pipeline",
+        "label": "2-Phase auction capture",
+        "focus": ["catawiki", "crawler", "db", "worker", "telegram"],
+        "note": "Open lots queued in live_watch, settled on close, and images cached to Telegram media vault."
+      },
+      {
+        "id": "rules-and-storage",
+        "label": "Storage & Rules engine",
+        "focus": ["rules", "matcher", "db", "pricing"],
+        "note": "Deterministic rules vocabulary, FTS5 catalog matching, and monotonic pricing boundary."
+      }
+    ]
+  },
+  "components": [
+    { "id": "operator", "type": "external", "label": "Operator", "sublabel": "Desktop / Browser", "pos": [40, 120], "size": [130, 60] },
+    { "id": "frontend", "type": "frontend", "label": "React 19 Terminal", "sublabel": "Vite + React Bits", "pos": [240, 120], "size": [140, 60] },
+    { "id": "api", "type": "backend", "label": "CUTI REST Server", "sublabel": "ThreadingHTTPServer :8000", "pos": [450, 120], "size": [150, 60] },
+    { "id": "pricing", "type": "backend", "label": "Pricing Engine", "sublabel": "Net p25/med/p75 & Limit", "pos": [680, 120], "size": [150, 60] },
+
+    { "id": "crawler", "type": "backend", "label": "2-Phase Crawler", "sublabel": "watch-live & settle", "pos": [240, 280], "size": [140, 60] },
+    { "id": "db", "type": "database", "label": "SQLite Database", "sublabel": "WAL / FTS5 / Outbox", "pos": [450, 280], "size": [150, 60] },
+    { "id": "matcher", "type": "backend", "label": "Comparables Gate", "sublabel": "RapidFuzz >= 85%", "pos": [680, 280], "size": [150, 60] },
+    { "id": "rules", "type": "database", "label": "Rules & Catalog", "sublabel": "rules.json & catalog.json", "pos": [940, 280], "size": [140, 60] },
+
+    { "id": "catawiki", "type": "external", "label": "Catawiki API", "sublabel": "Open & Settled Lots", "pos": [40, 440], "size": [130, 60] },
+    { "id": "worker", "type": "backend", "label": "Image Worker", "sublabel": "Lease & SendPhoto", "pos": [450, 440], "size": [150, 60] },
+    { "id": "telegram", "type": "external", "label": "Telegram API", "sublabel": "Media CDN & Alerts", "pos": [680, 440], "size": [150, 60] }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Local Workspace Runtime",
+      "wraps": ["frontend", "api", "pricing", "matcher", "db", "rules", "crawler", "worker"]
+    },
+    {
+      "kind": "security-group",
+      "label": "Core Valuation & Storage",
+      "wraps": ["pricing", "matcher", "db", "rules"]
+    }
+  ],
+  "connections": [
+    { "id": "user-access", "from": "operator", "to": "frontend", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "fe-api", "from": "frontend", "to": "api", "label": "REST JSON", "variant": "emphasis" },
+    { "id": "api-pricing", "from": "api", "to": "pricing", "label": "evaluate deal", "variant": "emphasis" },
+    { "id": "matcher-pricing", "from": "matcher", "to": "pricing", "label": "comparables", "fromSide": "top", "toSide": "bottom" },
+    { "id": "db-matcher", "from": "db", "to": "matcher", "label": "sold lots" },
+    { "id": "rules-matcher", "from": "rules", "to": "matcher", "label": "identity rules", "labelDy": -20 },
+
+    { "id": "api-db", "from": "api", "to": "db", "label": "state & deals", "fromSide": "bottom", "toSide": "top", "labelDy": 24 },
+
+    { "id": "cw-crawl", "from": "catawiki", "to": "crawler", "label": "buyer API", "fromSide": "top", "toSide": "left" },
+    { "id": "crawl-db", "from": "crawler", "to": "db", "label": "lots & queue", "variant": "emphasis" },
+    { "id": "db-worker", "from": "db", "to": "worker", "label": "image lease", "fromSide": "bottom", "toSide": "top", "labelDy": 24 },
+    { "id": "worker-tg", "from": "worker", "to": "telegram", "label": "sendPhoto", "variant": "dashed" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Core Valuation",
+      "items": [
+        "RapidFuzz fuzzy matcher enforces exact gates on brand and condition",
+        "Deterministic net percentile formulas calculate p25, median, and p75",
+        "Calculates maximum buy price and safety margin price gap"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "2-Phase Data Ingestion",
+      "items": [
+        "Phase 1 (watch-live): captures open lot IDs into live_watch",
+        "Phase 2 (settle): pulls hammer prices, bids, hearts, and closes queue",
+        "Background image worker coordinates CDN upload via Telegram"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Security & Isolation",
+      "items": [
+        "Telegram bot token kept strictly on backend, never exposed to browser",
+        "Local SQLite database operates in WAL mode with transactional outbox",
+        "Hermetic Tier-1 offline verification runs without external network"
+      ]
+    }
+  ]
+}

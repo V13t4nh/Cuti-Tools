@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Deal Valuation & Evaluation Sequence",
+    "output": "sequence.html",
+    "viewBox": [880, 760],
+    "column_fit": "spread",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "search-phase",
+        "label": "Product Search",
+        "focus": ["user", "ui", "api", "db"],
+        "note": "Operator searches canonical product catalog."
+      },
+      {
+        "id": "eval-phase",
+        "label": "Evaluation Engine",
+        "focus": ["ui", "api", "matcher", "pricing", "db"],
+        "note": "Filter exact gates, calculate net proceeds, and determine verdict."
+      },
+      {
+        "id": "save-phase",
+        "label": "Save Tracked Deal",
+        "focus": ["user", "ui", "api", "db"],
+        "note": "Persist deal with immutable historical pricing snapshot."
+      }
+    ]
+  },
+  "participants": [
+    { "id": "user", "type": "external", "label": "Operator", "sublabel": "Browser Session" },
+    { "id": "ui", "type": "frontend", "label": "React Terminal", "sublabel": "React 19 / Vite" },
+    { "id": "api", "type": "backend", "label": "CUTI Server", "sublabel": "api.py :8000" },
+    { "id": "matcher", "type": "backend", "label": "Matcher", "sublabel": "comparables.py" },
+    { "id": "pricing", "type": "backend", "label": "Pricing Engine", "sublabel": "pricing.py" },
+    { "id": "db", "type": "database", "label": "SQLite DB", "sublabel": "WAL Database" }
+  ],
+  "segments": [
+    { "from": 150, "to": 290, "label": "Catalog Search" },
+    { "from": 310, "to": 540, "label": "Valuation & Verdict" },
+    { "from": 560, "to": 670, "label": "Persist Deal" }
+  ],
+  "messages": [
+    { "id": "search-input", "from": "user", "to": "ui", "y": 180, "label": "search product reference", "variant": "default" },
+    { "id": "api-search", "from": "ui", "to": "api", "y": 218, "label": "GET /api/products/search?q=...", "variant": "emphasis" },
+    { "id": "db-search", "from": "api", "to": "db", "y": 252, "label": "query canonical_products", "variant": "default" },
+    { "id": "search-res", "from": "api", "to": "ui", "y": 285, "label": "canonical product match", "variant": "return" },
+
+    { "id": "deal-input", "from": "user", "to": "ui", "y": 340, "label": "input cost + condition", "variant": "default" },
+    { "id": "api-eval", "from": "ui", "to": "api", "y": 380, "label": "POST /api/evaluate", "variant": "emphasis" },
+    { "id": "call-matcher", "from": "api", "to": "matcher", "y": 418, "label": "find_comparables(rules, gates)", "variant": "default" },
+    { "id": "read-lots", "from": "matcher", "to": "db", "y": 454, "label": "SELECT lots (RapidFuzz >= 85%)", "variant": "default" },
+    { "id": "call-pricing", "from": "matcher", "to": "pricing", "y": 490, "label": "calculate_net_proceeds()", "variant": "emphasis" },
+    { "id": "eval-res", "from": "api", "to": "ui", "y": 528, "label": "200 Verdict (Green/Yellow/Red)", "variant": "return" },
+
+    { "id": "save-deal", "from": "user", "to": "ui", "y": 585, "label": "click save deal", "variant": "default" },
+    { "id": "api-save", "from": "ui", "to": "api", "y": 620, "label": "POST /api/deals (snapshot)", "variant": "emphasis" },
+    { "id": "db-insert", "from": "api", "to": "db", "y": 655, "label": "INSERT tracked_deals", "variant": "dashed" }
+  ],
+  "activations": [
+    { "participant": "ui", "from": 180, "to": 288, "type": "frontend" },
+    { "participant": "api", "from": 218, "to": 286, "type": "backend" },
+    { "participant": "ui", "from": 340, "to": 532, "type": "frontend" },
+    { "participant": "api", "from": 380, "to": 530, "type": "backend" },
+    { "participant": "matcher", "from": 418, "to": 494, "type": "backend" },
+    { "participant": "pricing", "from": 490, "to": 524, "type": "backend" },
+    { "participant": "ui", "from": 585, "to": 665, "type": "frontend" },
+    { "participant": "api", "from": 620, "to": 662, "type": "backend" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Valuation Pipeline",
+      "items": [
+        "Exact gates on Brand, Condition, and Form eliminate mismatched comps",
+        "Deterministic net proceeds calculation p25, median, and p75",
+        "Threshold checks trigger objective Green, Yellow, or Red verdict"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Immutable Auditing",
+      "items": [
+        "Every evaluated deal captures rules hash and active formula revision",
+        "Stored snapshots ensure quotes remain reproducible over time",
+        "Future changes to pricing config will not alter historical audits"
+      ]
+    }
+  ]
+}

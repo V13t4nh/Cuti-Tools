@@ -16,6 +16,10 @@ ui = [
     "rapidfuzz>=3.9,<4",
     "streamlit>=1.42,<2",
 ]
+tui = [
+    "textual>=0.70.0,<2",
+]
+
 
 [project.scripts]
 cuti = "cuti.cli:main"

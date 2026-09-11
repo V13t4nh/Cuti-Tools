@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "CUTI-Tools Data Pipeline & Valuation Flow",
+    "output": "dataflow.html",
+    "viewBox": [1080, 760],
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "auction-pipeline",
+        "label": "2-Phase Auction Pipeline",
+        "focus": ["cw_api", "pipeline", "live_q", "lots_db"],
+        "note": "Open lots captured in live_watch, then settled with hammer prices into lots table."
+      },
+      {
+        "id": "valuation-stream",
+        "label": "Valuation & Decision Stream",
+        "focus": ["lots_db", "deals_db", "pricing_engine", "terminal", "outbox"],
+        "note": "Comparables matching feeds pricing percentiles to produce terminal decisions and alerts."
+      },
+      {
+        "id": "liquidity-stream",
+        "label": "Liquidity Market Analytics",
+        "focus": ["lots_db", "liquidity_engine", "terminal"],
+        "note": "Historical sold and unsold lots scored by brand and form segment."
+      }
+    ]
+  },
+  "stages": [
+    { "label": "Sources" },
+    { "label": "Ingestion" },
+    { "label": "Storage" },
+    { "label": "Engines" },
+    { "label": "Consumers" }
+  ],
+  "nodes": [
+    { "id": "cw_api", "type": "external", "label": "Catawiki API", "sublabel": "watch lots", "stage": 0, "row": 0, "tag": "auctions" },
+    { "id": "deals_feed", "type": "external", "label": "Deal Feed", "sublabel": "market offers", "stage": 0, "row": 2, "tag": "asks" },
+
+    { "id": "pipeline", "type": "backend", "label": "2-Phase Pipeline", "sublabel": "watch-live & settle", "stage": 1, "row": 0, "tag": "crawler" },
+    { "id": "deals_ingest", "type": "backend", "label": "Deal Parser", "sublabel": "SHA256 dedupe", "stage": 1, "row": 2, "tag": "dedupe" },
+
+    { "id": "live_q", "type": "database", "label": "live_watch", "sublabel": "open lots queue", "stage": 2, "row": 0, "tag": "active queue" },
+    { "id": "lots_db", "type": "database", "label": "lots & FTS5", "sublabel": "hammer archive", "stage": 2, "row": 1, "tag": "comparables" },
+    { "id": "deals_db", "type": "database", "label": "deals table", "sublabel": "tracked deals", "stage": 2, "row": 2, "tag": "storage" },
+
+    { "id": "liquidity_engine", "type": "backend", "label": "Liquidity Engine", "sublabel": "Brand + Form", "stage": 3, "row": 1, "tag": "velocity" },
+    { "id": "pricing_engine", "type": "backend", "label": "Pricing Engine", "sublabel": "net p25/med/p75", "stage": 3, "row": 2, "tag": "verdicts" },
+
+    { "id": "terminal", "type": "frontend", "label": "React Terminal", "sublabel": "decision UI", "stage": 4, "row": 1, "tag": "interactive" },
+    { "id": "outbox", "type": "messagebus", "label": "Alert Outbox", "sublabel": "Telegram outbox", "stage": 4, "row": 2, "tag": "delivery" }
+  ],
+  "flows": [
+    { "id": "f_cw_pipeline", "from": "cw_api", "to": "pipeline", "label": "open lots", "classification": "crawler batch", "variant": "emphasis", "route": "straight" },
+    { "id": "f_deals_ingest", "from": "deals_feed", "to": "deals_ingest", "label": "raw asks", "classification": "feed stream", "variant": "default", "route": "straight" },
+
+    { "id": "f_pipeline_live", "from": "pipeline", "to": "live_q", "label": "queue open", "classification": "queue insert", "variant": "default", "route": "straight" },
+    { "id": "f_pipeline_settle", "from": "pipeline", "to": "lots_db", "label": "settled hammer", "classification": "hammer record", "variant": "emphasis", "fromSide": "right", "toSide": "left" },
+    { "id": "f_ingest_deals", "from": "deals_ingest", "to": "deals_db", "label": "deduped deals", "classification": "deal record", "variant": "default", "route": "straight" },
+
+    { "id": "f_lots_liquidity", "from": "lots_db", "to": "liquidity_engine", "label": "attempts & sell-through", "classification": "market pool", "variant": "default", "route": "straight" },
+    { "id": "f_lots_pricing", "from": "lots_db", "to": "pricing_engine", "label": "sold comparables", "classification": "comps pool", "variant": "emphasis", "fromSide": "right", "toSide": "left" },
+    { "id": "f_deals_pricing", "from": "deals_db", "to": "pricing_engine", "label": "asking prices", "classification": "quote input", "variant": "default", "route": "straight" },
+
+    { "id": "f_liquidity_terminal", "from": "liquidity_engine", "to": "terminal", "label": "segment metrics", "classification": "health index", "variant": "default", "route": "straight" },
+    { "id": "f_pricing_terminal", "from": "pricing_engine", "to": "terminal", "label": "verdict & max buy", "classification": "valuation signal", "variant": "emphasis", "fromSide": "top", "toSide": "bottom" },
+    { "id": "f_pricing_outbox", "from": "pricing_engine", "to": "outbox", "label": "green deal alert", "classification": "notification", "variant": "security", "route": "straight" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "2-Phase Ingestion",
+      "items": [
+        "Open lots are queued during bidding into live_watch table",
+        "Settlement pipeline extracts hammer price, bids, and hearts at close",
+        "Synthetic test data is strictly segregated from real valuation pools"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Reliable Delivery",
+      "items": [
+        "Valuation decisions stream directly to the React 19 terminal",
+        "Profitable Green alerts write transactionally into the alert outbox",
+        "Outbox retries delivery to Telegram with dead-letter protection"
+      ]
+    }
+  ]
+}

@@ -53,6 +53,10 @@ export const api = {
   liquidityDetail: (brand: string, form: string) => request<{ segment: LiquidityRow }>(`/api/liquidity/${encodeURIComponent(brand)}/${encodeURIComponent(form)}`),
   auctions: (params: MarketQuery) => request<{ lots: AuctionLot[]; data_freshness: Freshness; state: string; pagination: MarketPagination }>(`/api/auction-lots${marketQuery(params)}`),
   auction: (id: string) => request<{ lot: AuctionLot }>(`/api/auction-lots/${encodeURIComponent(id)}`),
+  lotImages: (lotId: string) =>
+    request<{ lot_id: string; images: Array<{ idx: number; state: string; url: string | null; direct_url?: string | null }> }>(
+      `/api/lots/${encodeURIComponent(lotId)}/images`
+    ),
   pricingConfig: () => request<PricingConfigResponse>('/api/pricing-config'),
   previewPricingConfig: (body: { draft: PricingDraft; inputs: { hammer_eur: number; cost_eur: number } }) =>
     request<PricingPreviewResponse>('/api/pricing-config/preview', { method: 'POST', body: JSON.stringify(body) }),

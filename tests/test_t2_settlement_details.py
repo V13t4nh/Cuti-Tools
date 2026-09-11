@@ -70,6 +70,52 @@ class SettlementDetailsTests(unittest.TestCase):
                 "Signed dial and steel bracelet.",
             )
 
+    def test_page_not_found_records_cancelled_lot(self) -> None:
+        from cuti.fetch import FetchError
+
+        root = Path(tempfile.mkdtemp())
+        settings = settings_for(
+            root,
+            CUTI_RULES_PATH=str(Path(__file__).parents[1] / "config" / "rules.json"),
+        )
+        rules = load_rules(settings.rules_path)
+        row = storage.LiveWatchRow(
+            "1", "catawiki", "Rare Deleted Watch", None,
+            "https://example.invalid/l/1", date(2026, 8, 1),
+        )
+
+        def _raise_404(_lot_id: str) -> str:
+            raise FetchError("https://example.invalid/l/1: HTTP 404")
+
+        settlement = settle(
+            _ClosedApi(), rules, settings, [row], fetch_details=_raise_404
+        )
+        self.assertIn("1", settlement.finished)
+        self.assertEqual(len(settlement.errors), 0)
+        self.assertEqual(len(settlement.lots), 1)
+        self.assertFalse(settlement.lots[0].source_available)
+        self.assertEqual(settlement.lots[0].review_status, "ignored")
+        self.assertEqual(settlement.lots[0].needs_review, 0)
+        specs = json.loads(settlement.lots[0].specs_json)
+        self.assertEqual(
+            specs.get("unclassified_reason"),
+            "lot_removed_by_source (https://example.invalid/l/1: HTTP 404)",
+        )
+
+        with storage.connect(settings.db_path) as conn:
+            persist(conn, settlement, datetime(2026, 8, 17, tzinfo=timezone.utc))
+            stored = conn.execute(
+                "SELECT source_available, review_status, needs_review, specs_json FROM lots WHERE lot_id = '1'"
+            ).fetchone()
+            self.assertEqual(stored[0], "__NO__")
+            self.assertEqual(stored[1], "ignored")
+            self.assertEqual(stored[2], 0)
+            self.assertEqual(
+                json.loads(stored[3])["unclassified_reason"],
+                "lot_removed_by_source (https://example.invalid/l/1: HTTP 404)",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
+
