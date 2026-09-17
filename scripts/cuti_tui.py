@@ -565,6 +565,7 @@ if TEXTUAL_AVAILABLE:
                 btn.variant = "primary"
                 btn.label = "Dev Server [d]"
                 self.update_system_metrics()
+                self._log("SYSTEM", "[bold green]Đã dừng hoàn toàn các máy chủ phát triển (FastAPI & Vite).[/bold green]")
             else:
                 self._log("SYSTEM", "Đang khởi động FastAPI (:8000) và Vite (:5173)...")
                 env = dict(os.environ)

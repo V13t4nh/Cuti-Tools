@@ -171,3 +171,37 @@ class AuctionFilterApiTests(unittest.TestCase):
         lot = payload["lot"]
         self.assertEqual(lot["condition_tag"], "fullset")
         self.assertEqual(lot["quality"], "new_unworn")
+
+    def test_filter_by_condition_with_status_all(self) -> None:
+        status, payload = get(
+            self.conn,
+            self.settings,
+            "/api/auction-lots",
+            {"status": ["all"], "conditions": ["fullset"]},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["pagination"]["total"], 1)
+        self.assertEqual(payload["lots"][0]["lot_id"], "lot-001")
+
+    def test_filter_by_condition_with_status_omitted(self) -> None:
+        status, payload = get(
+            self.conn,
+            self.settings,
+            "/api/auction-lots",
+            {"conditions": ["box"]},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["pagination"]["total"], 1)
+        self.assertEqual(payload["lots"][0]["lot_id"], "lot-002")
+
+    def test_filter_by_condition_with_status_open_returns_empty(self) -> None:
+        status, payload = get(
+            self.conn,
+            self.settings,
+            "/api/auction-lots",
+            {"status": ["open"], "conditions": ["fullset"]},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["pagination"]["total"], 0)
+        self.assertEqual(len(payload["lots"]), 0)
+

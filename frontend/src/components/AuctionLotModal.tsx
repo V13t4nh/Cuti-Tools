@@ -6,8 +6,10 @@ import AppIcon from './AppIcon'
 
 interface AuctionLotModalProps {
   lot: AuctionLot
+  lots?: AuctionLot[]
   onClose: () => void
   onAssessLot?: (lot: AuctionLot) => void
+  onSelectLot?: (lot: AuctionLot) => void
 }
 
 const money = (v: number | null, code = 'VND') =>
@@ -16,43 +18,64 @@ const money = (v: number | null, code = 'VND') =>
     : new Intl.NumberFormat('vi-VN', {
         style: 'currency',
         currency: code.toUpperCase(),
-        maximumFractionDigits: code.toLowerCase() === 'vnd' ? 0 : 2,
-      }).format(v)
+        maximumFractionDigits: 0,
+      }).format(Math.round(v))
 
 const dateOnly = (v: string) =>
   new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeZone: 'Asia/Ho_Chi_Minh' }).format(
     new Date(`${v}T12:00:00+07:00`)
   )
 
-export function AuctionLotModal({ lot, onClose, onAssessLot }: AuctionLotModalProps) {
+export function AuctionLotModal({ lot, lots, onClose, onAssessLot, onSelectLot }: AuctionLotModalProps) {
   const [images, setImages] = useState<Array<{ image: string; alt?: string; fallback?: string }>>(() => {
     const init = mediaUrl(lot.cover?.url) || lot.cover?.url
     return init ? [{ image: init, alt: lot.title }] : []
   })
   const [activeIndex, setActiveIndex] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  const [transitionDir, setTransitionDir] = useState<'left' | 'right' | 'up' | 'down' | null>(null)
+  const [showDetails, setShowDetails] = useState(false)
+  const [feedback, setFeedback] = useState<string | null>(null)
   const backdropRef = useRef<HTMLDivElement>(null)
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null)
 
+  // Reset active photo index and loading state when lot changes
+  useEffect(() => {
+    setActiveIndex(0)
+    setImageLoaded(false)
+  }, [lot.lot_id])
+
+  // Clear feedback toast
+  useEffect(() => {
+    if (!feedback) return
+    const t = setTimeout(() => setFeedback(null), 1600)
+    return () => clearTimeout(t)
+  }, [feedback])
+
+  // Fetch gallery images
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+
+    // Pre-populate with lot cover image immediately so transition is instant
+    const initCover = mediaUrl(lot.cover?.url) || lot.cover?.url
+    if (initCover) {
+      setImages([{ image: initCover, alt: lot.title }])
+    }
 
     api.lotImages(lot.lot_id)
       .then((res) => {
         if (cancelled) return
 
-        // 1. Cover from Telegram Vault (idx = 0)
         const coverRecord = res.images.find((img) => img.idx === 0)
         const telegramFallback = coverRecord?.url || mediaUrl(lot.cover?.url) || lot.cover?.url || undefined
 
-        // 2. Gallery photos from direct CDN (idx >= 1)
         const cdnGallery = res.images.filter(
           (img) => img.idx >= 1 && Boolean(img.direct_url || img.url)
         )
 
         if (cdnGallery.length > 0) {
-          // Prioritize direct CDN URLs for all slides:
-          // Photo 1 (idx=1) has fallback to Telegram cover if CDN fails or returns error
           const valid = cdnGallery.map((img, i) => ({
             image: (img.direct_url || img.url)!,
             alt: `${lot.title} - Ảnh ${i + 1}`,
@@ -60,12 +83,10 @@ export function AuctionLotModal({ lot, onClose, onAssessLot }: AuctionLotModalPr
           }))
           setImages(valid)
         } else if (telegramFallback) {
-          // CDN didn't return gallery photos -> fall back to Telegram cover
           setImages([{ image: telegramFallback, alt: `${lot.title} - Ảnh bìa` }])
         }
       })
       .catch(() => {
-        // Fallback to Telegram cover on network or API failure
         const fb = mediaUrl(lot.cover?.url) || lot.cover?.url
         if (fb) {
           setImages([{ image: fb, alt: lot.title }])
@@ -80,9 +101,40 @@ export function AuctionLotModal({ lot, onClose, onAssessLot }: AuctionLotModalPr
     }
   }, [lot.lot_id, lot.title, lot.cover?.url])
 
+  // Keyboard navigation
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        if (showDetails) {
+          setShowDetails(false)
+        } else {
+          onClose()
+        }
+      } else if (e.key === 'ArrowRight' && images.length > 1) {
+        setTransitionDir('left')
+        setImageLoaded(false)
+        setActiveIndex((prev) => (prev + 1) % images.length)
+      } else if (e.key === 'ArrowLeft' && images.length > 1) {
+        setTransitionDir('right')
+        setImageLoaded(false)
+        setActiveIndex((prev) => (prev - 1 + images.length) % images.length)
+      } else if (e.key === 'ArrowDown' && lots && lots.length > 0 && onSelectLot) {
+        const cur = lots.findIndex((l) => l.lot_id === lot.lot_id)
+        if (cur >= 0 && cur < lots.length - 1) {
+          setTransitionDir('up')
+          setImageLoaded(false)
+          setFeedback(`Lô #${lots[cur + 1].lot_id}`)
+          onSelectLot(lots[cur + 1])
+        }
+      } else if (e.key === 'ArrowUp' && lots && lots.length > 0 && onSelectLot) {
+        const cur = lots.findIndex((l) => l.lot_id === lot.lot_id)
+        if (cur > 0) {
+          setTransitionDir('down')
+          setImageLoaded(false)
+          setFeedback(`Lô #${lots[cur - 1].lot_id}`)
+          onSelectLot(lots[cur - 1])
+        }
+      }
     }
     window.addEventListener('keydown', onKey)
     const prevOverflow = document.body.style.overflow
@@ -91,7 +143,77 @@ export function AuctionLotModal({ lot, onClose, onAssessLot }: AuctionLotModalPr
       window.removeEventListener('keydown', onKey)
       document.body.style.overflow = prevOverflow
     }
-  }, [onClose])
+  }, [onClose, showDetails, images.length, lots, lot.lot_id, onSelectLot])
+
+  // Mobile Touch Gestures
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length !== 1) return
+    touchStartRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+      time: Date.now(),
+    }
+  }
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStartRef.current) return
+    const touch = e.changedTouches[0]
+    const deltaX = touch.clientX - touchStartRef.current.x
+    const deltaY = touch.clientY - touchStartRef.current.y
+    const absX = Math.abs(deltaX)
+    const absY = Math.abs(deltaY)
+    const elapsed = Date.now() - touchStartRef.current.time
+    touchStartRef.current = null
+
+    if (elapsed > 700) return
+
+    // Swipe Horizontal: Prev/Next photo
+    if (absX > 36 && absX > absY * 1.1) {
+      if (images.length <= 1) return
+      if (deltaX < 0) {
+        // Dragged left -> view next photo (slides in from right)
+        setTransitionDir('left')
+        setImageLoaded(false)
+        setActiveIndex((prev) => (prev + 1) % images.length)
+      } else {
+        // Dragged right -> view prev photo (slides in from left)
+        setTransitionDir('right')
+        setImageLoaded(false)
+        setActiveIndex((prev) => (prev - 1 + images.length) % images.length)
+      }
+      return
+    }
+
+    // Swipe Vertical: Prev/Next lot
+    if (absY > 48 && absY > absX * 1.1 && lots && lots.length > 0 && onSelectLot) {
+      const cur = lots.findIndex((l) => l.lot_id === lot.lot_id)
+      if (cur < 0) return
+
+      if (deltaY < 0) {
+        // Swiped UP -> Next product (slides in from bottom)
+        if (cur < lots.length - 1) {
+          const next = lots[cur + 1]
+          setTransitionDir('up')
+          setImageLoaded(false)
+          setFeedback(`Lô #${next.lot_id}`)
+          onSelectLot(next)
+        } else {
+          setFeedback('Đã là lô cuối cùng')
+        }
+      } else {
+        // Swiped DOWN -> Previous product (slides in from top)
+        if (cur > 0) {
+          const prev = lots[cur - 1]
+          setTransitionDir('down')
+          setImageLoaded(false)
+          setFeedback(`Lô #${prev.lot_id}`)
+          onSelectLot(prev)
+        } else {
+          setFeedback('Đã là lô đầu tiên')
+        }
+      }
+    }
+  }
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === backdropRef.current) {
@@ -112,127 +234,297 @@ export function AuctionLotModal({ lot, onClose, onAssessLot }: AuctionLotModalPr
       aria-labelledby="auction-modal-title"
     >
       <div className="auction-modal-content">
-        <header className="auction-modal-header">
-          <div className="auction-modal-title-area">
+        {/* Top bar: title on left, close button on right */}
+        <header className="auction-modal-topbar">
+          <div className="auction-modal-title-wrap">
+            <span className="auction-modal-lot-tag">Lô #{lot.lot_id}</span>
             <h2 id="auction-modal-title" title={lot.title}>
               {lot.title}
             </h2>
-            <div className="auction-modal-subtitle">
-              <span>Lô #{lot.lot_id}</span>
-              <span>·</span>
-              {lot.status === 'settled' ? (
-                <>
-                  {isCancelled ? (
-                    <span className="chip-cancelled">Bị gỡ / Hủy</span>
-                  ) : (
-                    <span className={lot.sold ? 'chip-sold' : 'chip-unsold'}>
-                      {lot.sold ? 'Đã bán' : 'Không bán được'}
-                    </span>
-                  )}
-                  {lot.hammer_eur != null && (
-                    <span>
-                      Giá gõ búa: <strong>{money(lot.hammer_eur, 'EUR')}</strong>
-                    </span>
-                  )}
-                  {!lot.sold && lot.highest_bid_eur != null && (
-                    <span>
-                      Giá cao nhất: <strong>{money(lot.highest_bid_eur, 'EUR')}</strong>
-                    </span>
-                  )}
-                  {lot.condition_tag && (
-                    <span className="chip-accessory">
-                      {lot.condition_tag === 'fullset' ? 'Đủ bộ (Fullset)' : lot.condition_tag === 'box' ? 'Có hộp (Box)' : lot.condition_tag === 'papers' ? 'Có giấy (Papers)' : 'Chỉ đồng hồ (Naked)'}
-                    </span>
-                  )}
-                  {lot.quality && (
-                    <span className="chip-quality">
-                      {lot.quality === 'new_unworn' ? 'Mới tinh / Chưa đeo' : lot.quality === 'very_good' ? 'Rất đẹp / Ít xước' : lot.quality === 'good' ? 'Khá' : 'Cũ / Cần bảo dưỡng'}
-                    </span>
-                  )}
-                  {lot.bidding_end_at && (
-                    <span>Kết thúc: {dateOnly(lot.bidding_end_at.slice(0, 10))}</span>
-                  )}
-                </>
-              ) : (
-                <span>{lot.status === 'open' ? 'Đang mở đấu giá' : 'Chờ kết quả'}</span>
-              )}
-            </div>
           </div>
           <button
             type="button"
-            className="auction-modal-close"
+            className="auction-modal-close-btn"
             onClick={onClose}
-            aria-label="Đóng popup (Esc)"
+            aria-label="Đóng (Esc)"
             title="Đóng (Esc)"
           >
             <AppIcon name="close" />
           </button>
         </header>
 
-        <div className="auction-modal-body">
-          {images.length > 0 ? (
-            <DepthCarousel
-              items={images}
-              cardWidth={620}
-              cardHeight={620}
-              depth={240}
-              spread={120}
-              tilt={15}
-              tiltDirection="right"
-              duration={600}
-              onChange={(idx) => setActiveIndex(idx)}
-            />
-          ) : (
-            <div className="empty" style={{ color: '#fff', minHeight: '320px' }}>
-              {loading ? 'Đang nạp ảnh chất lượng cao…' : 'Chưa có ảnh cho lô này.'}
-            </div>
-          )}
-        </div>
+        {/* Feedback toast when swiping between lots */}
+        {feedback && (
+          <div className="auction-lot-swipe-toast" role="status">
+            {feedback}
+          </div>
+        )}
 
-        <footer className="auction-modal-footer">
-          <div className="auction-modal-counter">
+        {/* Canvas: Desktop 3D DepthCarousel vs Mobile Full-bleed Swipe Stage */}
+        <div className="auction-modal-body">
+          {/* Desktop Canvas (React Bits DepthCarousel) */}
+          <div className="auction-canvas-desktop">
             {images.length > 0 ? (
-              <span>
-                Ảnh <strong>{activeIndex + 1}</strong> / {images.length}
-                {loading && ' (đang đồng bộ thêm…)'}
-              </span>
+              <>
+                <DepthCarousel
+                  items={images}
+                  cardWidth={580}
+                  cardHeight={580}
+                  depth={220}
+                  spread={100}
+                  tilt={14}
+                  tiltDirection="right"
+                  duration={600}
+                  onChange={(idx) => setActiveIndex(idx)}
+                />
+                {loading && (
+                  <div className="desktop-photo-loading-tag" aria-live="polite">
+                    <span className="photo-loading-spinner photo-loading-spinner--sm" />
+                    <span>Đang nạp bộ sưu tập ảnh…</span>
+                  </div>
+                )}
+              </>
             ) : (
-              <span>0 ảnh</span>
+              <div className="empty" style={{ color: '#fff', minHeight: '320px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                {loading && <span className="photo-loading-spinner" />}
+                <span>{loading ? 'Đang nạp ảnh chất lượng cao…' : 'Chưa có ảnh cho lô này.'}</span>
+              </div>
             )}
           </div>
-          <div className="auction-modal-actions">
-            {images[activeIndex]?.image && (
-              <a
-                className="secondary button"
-                href={images[activeIndex].image}
-                target="_blank"
-                rel="noreferrer"
-                title="Mở ảnh gốc trong tab mới"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-              >
-                <AppIcon name="external" />
-                <span>Ảnh gốc</span>
-              </a>
+
+          {/* Mobile Canvas (Touch swipeable full-bleed stage) */}
+          <div
+            className="auction-canvas-mobile"
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+          >
+            {images.length > 0 ? (
+              <div className="mobile-photo-stage">
+                <img
+                  key={`${lot.lot_id}-${activeIndex}`}
+                  src={images[activeIndex]?.image}
+                  alt={images[activeIndex]?.alt || lot.title}
+                  className={`mobile-main-photo ${transitionDir ? `slide-${transitionDir}` : ''}`}
+                  onLoad={() => setImageLoaded(true)}
+                  onError={(e) => {
+                    setImageLoaded(true)
+                    if (images[activeIndex]?.fallback) {
+                      e.currentTarget.src = images[activeIndex].fallback!
+                    }
+                  }}
+                />
+
+                {/* Loading indicator during lot switch or image download */}
+                {(loading || !imageLoaded) && (
+                  <div className="mobile-photo-loading-overlay" role="status" aria-live="polite">
+                    <span className="photo-loading-spinner" />
+                    <span className="photo-loading-text">
+                      {loading ? 'Đang nạp ảnh lô mới…' : 'Đang tải ảnh…'}
+                    </span>
+                  </div>
+                )}
+
+                {/* Touch hint overlays for swipe */}
+                <div className="mobile-swipe-guide" aria-hidden="true">
+                  <span>‹ vuốt ngang đổi ảnh ›</span>
+                  {lots && lots.length > 1 && <span>↕ vuốt dọc đổi lô</span>}
+                </div>
+              </div>
+            ) : (
+              <div className="empty" style={{ color: '#fff', minHeight: '320px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                {loading && <span className="photo-loading-spinner" />}
+                <span>{loading ? 'Đang nạp ảnh chất lượng cao…' : 'Chưa có ảnh cho lô này.'}</span>
+              </div>
             )}
+          </div>
+        </div>
+
+        {/* Glassmorphism Detail Sheet Overlay (Triggered by bottom-left Pill) */}
+        {showDetails && (
+          <div
+            className="auction-detail-overlay"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowDetails(false)
+            }}
+          >
+            <div className="auction-detail-sheet" role="region" aria-label="Thông số chi tiết">
+              <div className="detail-sheet-header">
+                <div>
+                  <span className="detail-sheet-tag">Lô #{lot.lot_id}</span>
+                  <h3 className="detail-sheet-title">{lot.title}</h3>
+                </div>
+                <button
+                  type="button"
+                  className="detail-sheet-close-btn"
+                  onClick={() => setShowDetails(false)}
+                  aria-label="Đóng chi tiết"
+                >
+                  <AppIcon name="close" />
+                </button>
+              </div>
+
+              <div className="detail-sheet-body">
+                {/* Finance block */}
+                <div className="detail-sheet-finance">
+                  <div className="finance-item">
+                    <span className="finance-label">Trạng thái</span>
+                    <span className="finance-val">
+                      {lot.status === 'settled' ? (
+                        isCancelled ? (
+                          <span className="chip-cancelled">Cancelled</span>
+                        ) : (
+                          <span className={lot.sold ? 'chip-sold' : 'chip-unsold'}>
+                            {lot.sold ? 'Settled' : 'Unsold'}
+                          </span>
+                        )
+                      ) : (
+                        <span className={lot.status === 'open' ? 'chip-open' : 'chip-waiting'}>
+                          {lot.status === 'open' ? 'Open' : 'Waiting'}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+
+                  {lot.hammer_eur != null && (
+                    <div className="finance-item">
+                      <span className="finance-label">Giá gõ búa</span>
+                      <span className="finance-val highlight">{money(lot.hammer_eur, 'EUR')}</span>
+                    </div>
+                  )}
+
+                  {!lot.sold && lot.highest_bid_eur != null && (
+                    <div className="finance-item">
+                      <span className="finance-label">Giá cao nhất</span>
+                      <span className="finance-val highlight">{money(lot.highest_bid_eur, 'EUR')}</span>
+                    </div>
+                  )}
+
+                  {lot.bidding_end_at && (
+                    <div className="finance-item">
+                      <span className="finance-label">Thời điểm kết thúc</span>
+                      <span className="finance-val">{dateOnly(lot.bidding_end_at.slice(0, 10))}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Badges / Specs block */}
+                <div className="detail-sheet-badges">
+                  {lot.condition_tag && (
+                    <span className={`chip-accessory chip-accessory--${lot.condition_tag}`}>
+                      {lot.condition_tag === 'fullset'
+                        ? 'Full Set'
+                        : lot.condition_tag === 'box'
+                        ? 'Box'
+                        : lot.condition_tag === 'papers'
+                        ? 'Papers'
+                        : 'Naked'}
+                    </span>
+                  )}
+                  {lot.quality && (
+                    <span className={`chip-quality chip-quality--${lot.quality}`}>
+                      {lot.quality === 'new_unworn'
+                        ? 'New / Unworn'
+                        : lot.quality === 'very_good'
+                        ? 'Very Good'
+                        : lot.quality === 'good'
+                        ? 'Good'
+                        : 'Fair'}
+                    </span>
+                  )}
+                  {lot.movement && (
+                    <span className={`chip-movement chip-movement--${lot.movement}`}>
+                      {lot.movement === 'auto'
+                        ? 'Automatic'
+                        : lot.movement === 'manual'
+                        ? 'Manual'
+                        : lot.movement === 'quartz'
+                        ? 'Quartz'
+                        : lot.movement}
+                    </span>
+                  )}
+                  {lot.case_material && (
+                    <span className={`chip-material chip-material--${lot.case_material}`}>
+                      {lot.case_material === 'steel'
+                        ? 'Steel'
+                        : lot.case_material === 'gold'
+                        ? 'Gold'
+                        : lot.case_material === 'gold_plated'
+                        ? 'Gold Plated'
+                        : lot.case_material === 'titanium'
+                        ? 'Titanium'
+                        : lot.case_material}
+                    </span>
+                  )}
+                  {lot.case_diameter_mm && (
+                    <span className="chip-diameter">{lot.case_diameter_mm}mm</span>
+                  )}
+                  {lot.needs_review === 1 && (
+                    <span className="chip-unclassified">Review: {lot.unclassified_reason || 'Cần kiểm tra'}</span>
+                  )}
+                </div>
+
+                {lot.subtitle && <p className="detail-sheet-desc">{lot.subtitle}</p>}
+
+                <div className="detail-sheet-meta-footer">
+                  {lot.bids_count != null && (
+                    <span>
+                      Lượt đặt giá: <strong>{lot.bids_count}</strong>
+                    </span>
+                  )}
+                  {lot.hearts != null && (
+                    <span>
+                      Quan tâm: <strong>{lot.hearts}</strong>
+                    </span>
+                  )}
+                  <span>
+                    Sàn: <strong>{lot.source || 'Catawiki'}</strong>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Floating Dock: Left (Detail Pill) - Center (1 / 16) - Right (Thẩm định | Nguồn) */}
+        <footer className="auction-modal-dock">
+          {/* Left Pill: Toggle Detail Sheet */}
+          <button
+            type="button"
+            className={`dock-pill dock-pill--detail ${showDetails ? 'active' : ''}`}
+            onClick={() => setShowDetails(!showDetails)}
+            aria-expanded={showDetails}
+            title="Xem chi tiết thông số đồng hồ"
+          >
+            <AppIcon name="assessment" />
+            <span>{showDetails ? 'Ẩn chi tiết' : 'Chi tiết'}</span>
+          </button>
+
+          {/* Center Pill: Photo Counter */}
+          <div className="dock-pill dock-pill--counter" title={`Ảnh ${activeIndex + 1} trong tổng số ${images.length} ảnh`}>
+            <span>{images.length > 0 ? `${activeIndex + 1} / ${images.length}` : '0 / 0'}</span>
+          </div>
+
+          {/* Right Pill: Actions (Thẩm định + Nguồn) */}
+          <div className="dock-pill dock-pill--actions">
             {onAssessLot && (
               <button
                 type="button"
-                className="secondary"
+                className="dock-action-btn"
                 onClick={() => onAssessLot(lot)}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                title="Đưa sang Thẩm định cơ hội"
               >
                 <AppIcon name="transfer" />
                 <span>Thẩm định</span>
               </button>
             )}
             <a
-              className="primary button"
+              className="dock-action-btn dock-action-btn--primary"
               href={lot.url}
               target="_blank"
               rel="noreferrer"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              title="Xem nguồn trực tiếp trên sàn"
             >
-              <span>Xem nguồn sàn</span>
+              <span>Nguồn</span>
               <AppIcon name="external" />
             </a>
           </div>

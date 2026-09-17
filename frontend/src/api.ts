@@ -12,7 +12,17 @@ import type {
 } from './types'
 
 export type MarketPagination = { page: number; page_size: number; total: number; total_pages: number }
-export type MarketQuery = { brand?: string; q?: string; status?: string; conditions?: string; qualities?: string; page: number; page_size: number }
+export type MarketQuery = {
+  brand?: string
+  q?: string
+  status?: string
+  conditions?: string
+  qualities?: string
+  movements?: string
+  materials?: string
+  page: number
+  page_size: number
+}
 
 function marketQuery(params: MarketQuery): string {
   const query = new URLSearchParams()
@@ -21,6 +31,8 @@ function marketQuery(params: MarketQuery): string {
   if (params.status) query.set('status', params.status)
   if (params.conditions) query.set('conditions', params.conditions)
   if (params.qualities) query.set('qualities', params.qualities)
+  if (params.movements) query.set('movements', params.movements)
+  if (params.materials) query.set('materials', params.materials)
   query.set('page', String(params.page))
   query.set('page_size', String(params.page_size))
   return `?${query}`

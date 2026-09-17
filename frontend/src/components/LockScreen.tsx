@@ -41,25 +41,25 @@ export function LockScreen({ onSuccess }: LockScreenProps) {
           <AppIcon name="cuti-mark" width={36} height={36} />
           <div>
             <h1 className="lock-screen-title">CUTI Decision Terminal</h1>
-            <p className="lock-screen-subtitle">Bảo vệ quyền truy cập từ xa</p>
+            <p className="lock-screen-subtitle">Truy cập nội bộ</p>
           </div>
         </div>
 
         <p className="lock-screen-desc">
-          Hệ thống được thiết lập chế độ riêng tư. Vui lòng nhập mã truy cập bí mật để mở khoá phiên làm việc.
+          Nhập mật khẩu một lần để sử dụng trên thiết bị này.
         </p>
 
         <form className="lock-screen-form" onSubmit={handleSubmit}>
           <div className="lock-input-group">
             <label htmlFor="auth-secret-input" className="lock-input-label">
-              Mã bảo vệ (Secret Key)
+              Mật khẩu truy cập
             </label>
             <input
               id="auth-secret-input"
               type="password"
               autoComplete="current-password"
               autoFocus
-              placeholder="Nhập mã bí mật..."
+              placeholder="Nhập mật khẩu..."
               value={secret}
               onChange={(e) => {
                 setSecret(e.target.value)
@@ -77,12 +77,12 @@ export function LockScreen({ onSuccess }: LockScreenProps) {
           )}
 
           <button type="submit" className="primary lock-submit-btn" disabled={loading || !secret.trim()}>
-            {loading ? 'Đang xác thực...' : 'Mở khoá hệ thống'}
+            {loading ? 'Đang kiểm tra...' : 'Vào hệ thống'}
           </button>
         </form>
 
         <div className="lock-screen-footer">
-          <span>Khóa bảo vệ cá nhân · Cloudflare Tunnel</span>
+          <span>CUTI Decision Terminal</span>
         </div>
       </div>
     </div>
