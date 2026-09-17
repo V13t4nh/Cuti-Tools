@@ -10,6 +10,7 @@ import json
 import math
 import os
 import secrets
+import sqlite3
 import sys
 import traceback
 import urllib.error
@@ -191,7 +192,19 @@ def app(environ: dict, start_response: object) -> list[bytes]:
     except Exception as exc:
         status, data = 500, {"error": {"code": "system_error", "message": str(exc), "traceback": traceback.format_exc()}}
     finally:
+        try:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except Exception:
+            pass
         conn.close()
+
+    # Persist database changes to R2 on successful write operations
+    if method in {"POST", "PUT", "PATCH", "DELETE"} and 200 <= status < 300 and path not in {"/api/auth/login", "/api/auth/logout", "/api/evaluate", "/api/pricing-config/preview"}:
+        try:
+            from cuti.r2 import upload_to_r2
+            upload_to_r2(TMP_DB)
+        except Exception as upload_exc:
+            print(f"[R2] Warning: Auto-upload to R2 after write failed: {upload_exc}", file=sys.stderr)
 
     payload = json.dumps(data, default=str, ensure_ascii=False).encode("utf-8")
     status_str = f"{status} {HTTPStatus(status).phrase}" if status in HTTPStatus._value2member_map_ else f"{status} OK"
@@ -208,3 +221,12 @@ class handler(CutiApiHandler):
             self.path = matched + (f"?{query}" if query else "")
         ensure_database_synced(TMP_DB)
         super()._dispatch(method, body)
+        if method in {"POST", "PUT", "PATCH", "DELETE"} and not self.path.startswith(("/api/auth", "/api/evaluate")):
+            try:
+                chk = sqlite3.connect(TMP_DB)
+                chk.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                chk.close()
+                from cuti.r2 import upload_to_r2
+                upload_to_r2(TMP_DB)
+            except Exception as exc:
+                print(f"[R2] Warning: Fallback handler auto-upload to R2 failed: {exc}", file=sys.stderr)

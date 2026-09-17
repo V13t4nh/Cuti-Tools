@@ -9,11 +9,14 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+import sqlite3
 from cuti.config import load_settings, parse_env_file
-from cuti.r2 import get_r2_config, upload_to_r2
+from cuti.r2 import download_from_r2, get_r2_config, upload_to_r2
 
 
 def main() -> int:
+    pull_mode = "--pull" in sys.argv or "--download" in sys.argv
+
     env_file = PROJECT_ROOT / ".env"
     env_vars = dict(os.environ)
     if env_file.is_file():
@@ -36,9 +39,23 @@ def main() -> int:
 
     settings = load_settings(env=env_vars, base_dir=PROJECT_ROOT)
     db_file = settings.db_path
+
+    if pull_mode:
+        print(f"[R2] Pulling latest database from R2 to {db_file}...")
+        success = download_from_r2(db_file, config)
+        return 0 if success else 1
+
     if not db_file.is_file():
         print(f"[ERROR] Database file not found at: {db_file}", file=sys.stderr)
         return 1
+
+    # Checkpoint WAL before uploading to ensure all transactions are merged
+    try:
+        conn = sqlite3.connect(db_file)
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        conn.close()
+    except Exception as exc:
+        print(f"[R2] WAL checkpoint notice: {exc}")
 
     success = upload_to_r2(db_file, config)
     return 0 if success else 1
