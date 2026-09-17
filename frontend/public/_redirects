@@ -1,8 +1,1 @@
-# Cloudflare Pages Redirects & Reverse Proxy
-# Format: /source-path  destination-url  status-code
-
-# Proxy all REST API requests to the Vercel backend
-/api/*  https://cuti-tools.vercel.app/api/:splat  200
-
-# SPA fallback
 /*  /index.html  200

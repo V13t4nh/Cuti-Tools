@@ -48,12 +48,15 @@ export function setStoredToken(token: string): void {
   }
 }
 
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '')
+
 export function mediaUrl(url: string | null | undefined): string | null {
   if (!url) return null
   const token = getStoredToken()
-  if (!token || !url.startsWith('/api/')) return url
-  const separator = url.includes('?') ? '&' : '?'
-  return `${url}${separator}token=${encodeURIComponent(token)}`
+  const fullUrl = url.startsWith('/api/') && API_BASE ? `${API_BASE}${url}` : url
+  if (!token || (!fullUrl.startsWith('/api/') && !fullUrl.includes('/api/'))) return fullUrl
+  const separator = fullUrl.includes('?') ? '&' : '?'
+  return `${fullUrl}${separator}token=${encodeURIComponent(token)}`
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -63,8 +66,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...((init?.headers as Record<string, string>) || {}),
   }
-  const response = await fetch(path, { ...init, headers })
-  const payload = await response.json() as T & { error?: { message?: string } }
+  const url = path.startsWith('http') ? path : `${API_BASE}${path}`
+  const response = await fetch(url, { ...init, headers })
+  let payload: T & { error?: { message?: string } }
+  try {
+    payload = (await response.json()) as T & { error?: { message?: string } }
+  } catch {
+    if (!response.ok) {
+      throw new Error(`Máy chủ trả về lỗi ${response.status}: ${response.statusText || 'Lỗi mạng'}`)
+    }
+    throw new Error('Dữ liệu máy chủ trả về không hợp lệ (không phải JSON)')
+  }
   if (!response.ok) {
     if (response.status === 401 && path !== '/api/auth/login') {
       window.dispatchEvent(new CustomEvent('cuti:unauthorized'))
