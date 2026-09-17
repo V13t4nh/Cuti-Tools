@@ -13,9 +13,12 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+# In Vercel serverless environment, writable directory is /tmp
 TMP_DB = Path("/tmp/auctions.db")
-os.environ.setdefault("CUTI_DB_PATH", str(TMP_DB))
-os.environ.setdefault("CUTI_HOME", str(PROJECT_ROOT))
+os.environ["CUTI_DB_PATH"] = str(TMP_DB)
+os.environ["CUTI_HOME"] = str(PROJECT_ROOT)
+os.environ["CUTI_NOTIFIER_FILE_PATH"] = "/tmp/alerts.jsonl"
+os.environ["CUTI_REPORT_PATH"] = "/tmp/report.html"
 
 try:
     from cuti.r2 import ensure_database_synced
