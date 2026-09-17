@@ -52,7 +52,7 @@ def _resolve_values(env: Mapping[str, str], base: Path) -> dict[str, str]:
         if unknown:
             raise ConfigError(f"unknown CUTI_* variables in {ENV_FILE_NAME}: {', '.join(unknown)}")
         values.update(file_values)
-    values.update({k: v for k, v in env.items() if k in DEFAULTS and (v.strip() if k == "CUTI_DB_PATH" else True)})
+    values.update({k: v for k, v in env.items() if k in DEFAULTS})
     unknown = sorted(k for k in env if k.startswith("CUTI_") and k not in DEFAULTS and k != HOME_VAR)
     if unknown:
         raise ConfigError(f"unknown CUTI_* variables: {', '.join(unknown)}")

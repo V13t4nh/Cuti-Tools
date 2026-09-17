@@ -31,6 +31,11 @@ os.environ["CUTI_HOME"] = str(PROJECT_ROOT)
 os.environ["CUTI_NOTIFIER_FILE_PATH"] = "/tmp/alerts.jsonl"
 os.environ["CUTI_REPORT_PATH"] = "/tmp/report.html"
 
+# Clean up any empty CUTI_* variables accidentally passed as empty strings
+for k in list(os.environ.keys()):
+    if k.startswith("CUTI_") and not os.environ[k].strip() and k not in {"CUTI_AUTH_SECRET", "CUTI_TELEGRAM_BOT_TOKEN", "CUTI_TELEGRAM_CHAT_ID", "CUTI_TELEGRAM_CHANNEL_ID"}:
+        del os.environ[k]
+
 from cuti.api import ApiError, error_payload, get, query_params, write
 from cuti.config import load_settings
 from cuti.errors import MediaUploadError
