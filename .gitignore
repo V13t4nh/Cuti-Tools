@@ -30,7 +30,6 @@ __pycache__/
 venv/
 env/
 ENV/
-.python-version
 
 # Packaging and build artifacts
 build/
