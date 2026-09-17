@@ -29,6 +29,13 @@ try:
 
         def _dispatch(self, method: str, body: object | None = None) -> None:
             try:
+                # If Vercel rewrote the path to /api, restore original path from x-matched-path
+                matched = self.headers.get("x-matched-path")
+                if matched and matched.startswith("/api"):
+                    from urllib.parse import urlparse
+                    query = urlparse(self.path).query
+                    self.path = matched + (f"?{query}" if query else "")
+
                 ensure_database_synced(TMP_DB)
                 super()._dispatch(method, body)
             except Exception as exc:
