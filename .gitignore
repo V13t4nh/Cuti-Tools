@@ -6,6 +6,9 @@
 # Runtime data and generated reports
 var/
 *.db
+*.db-wal
+*.db-shm
+*.lock
 *.sqlite
 *.sqlite3
 *.log
@@ -54,6 +57,7 @@ coverage.xml
 Thumbs.db
 
 # Node frontends and generated builds
+node_modules/
 frontend/node_modules/
 frontend/dist/
 frontend/*.tsbuildinfo
@@ -62,3 +66,4 @@ web/.next/
 web/out/
 web/*.tsbuildinfo
 web/next-env.d.ts
+.wrangler/

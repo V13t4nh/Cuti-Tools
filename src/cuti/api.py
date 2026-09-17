@@ -81,29 +81,12 @@ def _liquidity(conn, settings: Settings, params: dict[str, list[str]]) -> dict[s
     offset, pagination = _pagination(params, len(rows))
     return {"state": "loaded", "data_freshness": _freshness_json(freshness), "groups": rows[offset:offset + pagination["page_size"]], "pagination": pagination}
 def _auction(conn, settings: Settings, params: dict[str, list[str]]) -> dict[str, object]:
-    freshness = _freshness(conn, settings); query, wanted = params.get("q", [""])[0].strip().lower(), params.get("status", ["all"])[0].strip().lower(); today = date.today().isoformat()
-    where, args = [], []
-    if query:
-        where.append("(instr(lower(coalesce(lot_id, '')), ?) > 0 OR instr(lower(coalesce(title, '')), ?) > 0 OR instr(lower(coalesce(subtitle, '')), ?) > 0)")
-        args.extend([query] * 3)
-    clause = f" WHERE {' AND '.join(where)}" if where else ""
-    from .telegram_media import cover_metadata
-    if wanted == "settled":
-        total = conn.execute(f"SELECT COUNT(*) FROM lots{clause}", args).fetchone()[0]
-        offset, pagination = _pagination(params, total)
-        rows = conn.execute(f"SELECT lot_id, source, title, subtitle, url, ended_at, hammer_eur, sold, bids_count, hearts, needs_review, source_available, review_status, specs_json FROM lots{clause} ORDER BY ended_at DESC, lot_id LIMIT ? OFFSET ?", [*args, pagination["page_size"], offset]).fetchall()
-        lots = [{"lot_id": r["lot_id"], "source": r["source"], "title": r["title"], "subtitle": r["subtitle"], "url": r["url"], "bidding_end_at": r["ended_at"], "status": "settled", "hammer_eur": r["hammer_eur"], "sold": bool(r["sold"]), "bids_count": r["bids_count"], "hearts": r["hearts"], "needs_review": r["needs_review"], "source_available": r["source_available"] not in ("__NO__", 0, False), "review_status": r["review_status"], "unclassified_reason": (json.loads(r["specs_json"]).get("unclassified_reason") if r["specs_json"] else None), "highest_bid_eur": (json.loads(r["specs_json"]).get("highest_bid_eur") if r["specs_json"] else None), "cover": cover_metadata(fetch_lot_image(conn, r["lot_id"]))} for r in rows]
-        return {"state": "loaded", "data_freshness": _freshness_json(freshness), "lots": lots, "pagination": pagination}
-    state_sql = "bidding_end_at IS NOT NULL AND bidding_end_at <> '' AND bidding_end_at > ?"
-    if wanted == "open": where.append(state_sql); args.append(today)
-    elif wanted == "waiting": where.append(f"NOT ({state_sql})"); args.append(today)
-    elif wanted != "all": where.append("0")
-    clause = f" WHERE {' AND '.join(where)}" if where else ""
-    total = conn.execute(f"SELECT COUNT(*) FROM live_watch{clause}", args).fetchone()[0]
-    offset, pagination = _pagination(params, total)
-    rows = conn.execute(f"SELECT lot_id, source, title, subtitle, url, bidding_end_at FROM live_watch{clause} ORDER BY bidding_end_at, lot_id LIMIT ? OFFSET ?", [*args, pagination["page_size"], offset]).fetchall()
-    lots = [{"lot_id": r["lot_id"], "source": r["source"], "title": r["title"], "subtitle": r["subtitle"], "url": r["url"], "bidding_end_at": r["bidding_end_at"], "status": "open" if r["bidding_end_at"] and r["bidding_end_at"] > today else "waiting", "cover": cover_metadata(fetch_lot_image(conn, r["lot_id"]))} for r in rows]
-    return {"state": "loaded", "data_freshness": _freshness_json(freshness), "lots": lots, "pagination": pagination}
+    from .api_auctions import list_auctions
+    freshness = _freshness(conn, settings)
+    if freshness.status == "no_data":
+        _, pagination = _pagination(params, 0)
+        return {"state": "no_data", "data_freshness": _freshness_json(freshness), "lots": [], "pagination": pagination}
+    return list_auctions(conn, settings, params, _pagination, _freshness_json, freshness)
 def get(conn, settings: Settings, path: str, params: dict[str, list[str]]) -> tuple[int, dict[str, object]]:
     parts = [unquote(part) for part in path.strip("/").split("/") if part]
     if parts == ["api", "pricing-config"]: from .api_pricing import get as pricing_get; return pricing_get(settings)
@@ -141,15 +124,10 @@ def get(conn, settings: Settings, path: str, params: dict[str, list[str]]) -> tu
     if parts == ["api", "auction-lots"]:
         return 200, _auction(conn, settings, params)
     if len(parts) == 3 and parts[:2] == ["api", "auction-lots"]:
-        from .telegram_media import cover_metadata
-        row = conn.execute("SELECT lot_id, source, title, subtitle, url, bidding_end_at FROM live_watch WHERE lot_id = ?", (parts[2],)).fetchone()
-        if row is not None:
-            end = row["bidding_end_at"]; status = "open" if end and end > date.today().isoformat() else "waiting"
-            return 200, {"state": "loaded", "lot": {"lot_id": row["lot_id"], "source": row["source"], "title": row["title"], "subtitle": row["subtitle"], "url": row["url"], "bidding_end_at": end, "status": status, "cover": cover_metadata(fetch_lot_image(conn, row["lot_id"]))}}
-        row = conn.execute("SELECT lot_id, source, title, subtitle, url, ended_at, hammer_eur, sold, bids_count, hearts, needs_review, source_available, review_status, specs_json FROM lots WHERE lot_id = ?", (parts[2],)).fetchone()
-        if row is None: raise ApiError(404, "not_found", "Auction lot was not found")
-        specs = json.loads(row["specs_json"] or "{}") if row["specs_json"] else {}
-        return 200, {"state": "loaded", "lot": {"lot_id": row["lot_id"], "source": row["source"], "title": row["title"], "subtitle": row["subtitle"], "url": row["url"], "bidding_end_at": row["ended_at"], "status": "settled", "hammer_eur": row["hammer_eur"], "sold": bool(row["sold"]), "bids_count": row["bids_count"], "hearts": row["hearts"], "needs_review": row["needs_review"], "source_available": row["source_available"] not in ("__NO__", 0, False), "review_status": row["review_status"], "unclassified_reason": specs.get("unclassified_reason"), "highest_bid_eur": specs.get("highest_bid_eur"), "cover": cover_metadata(fetch_lot_image(conn, row["lot_id"]))}}
+        from .api_auctions import get_auction_lot
+        lot = get_auction_lot(conn, parts[2])
+        if lot is None: raise ApiError(404, "not_found", "Auction lot was not found")
+        return 200, {"state": "loaded", "lot": lot}
     if len(parts) == 4 and parts[:2] == ["api", "lots"] and parts[3] == "images":
         from .pipeline.gallery import get_lot_gallery_images
         return 200, {"state": "loaded", "lot_id": parts[2], "images": get_lot_gallery_images(conn, parts[2], settings)}

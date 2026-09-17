@@ -15,14 +15,24 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 from cuti_tui import (
     SubprocessTask,
     SystemMetrics,
+    copy_to_system_clipboard,
     is_port_open,
     kill_process_tree,
     query_metrics,
+    setup_windows_console,
 )
 
 
 class TestCutiTui(unittest.TestCase):
     """Test suite for TUI helper functions and process supervisor."""
+
+    def test_copy_to_system_clipboard_unicode(self) -> None:
+        """Verify copy_to_system_clipboard executes without error for Unicode Vietnamese."""
+        setup_windows_console()
+        text = "Tiến trình Pipeline kết thúc thành công ➜"
+        res = copy_to_system_clipboard(text)
+        if os.name == "nt":
+            self.assertTrue(res)
 
     def test_is_port_open_returns_bool(self) -> None:
         """Verify port checker returns a boolean and handles closed ports cleanly."""
@@ -85,27 +95,41 @@ class TestCutiTui(unittest.TestCase):
                 proc.kill()
 
     def test_tui_check_flag(self) -> None:
-        """Verify cuti_tui.py --check executes and returns code 0."""
+        """Verify cuti_tui.py --check executes and reports status according to textual availability."""
+        from cuti_tui import TEXTUAL_AVAILABLE
         result = subprocess.run(
             [sys.executable, str(PROJECT_ROOT / "scripts" / "cuti_tui.py"), "--check"],
             capture_output=True,
             text=True,
             check=False,
         )
-        self.assertEqual(result.returncode, 0)
-        self.assertIn("TUI Environment OK", result.stdout)
+        if TEXTUAL_AVAILABLE:
+            self.assertEqual(result.returncode, 0)
+            self.assertIn("TUI Environment OK", result.stdout)
+        else:
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("textual", result.stderr.lower())
 
 
     def test_image_worker_until_empty(self) -> None:
         """Verify run_image_worker.py --until-empty exits cleanly when queue is idle."""
-        result = subprocess.run(
-            [sys.executable, str(PROJECT_ROOT / "scripts" / "run_image_worker.py"), "--until-empty"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        self.assertEqual(result.returncode, 0)
-        self.assertIn("Worker completed", result.stdout)
+        import tempfile
+        from cuti.storage import connect
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+            temp_db = Path(tmpdir) / "test.db"
+            conn = connect(temp_db)
+            conn.close()
+            env = dict(os.environ)
+            env["CUTI_DB_PATH"] = str(temp_db)
+            result = subprocess.run(
+                [sys.executable, str(PROJECT_ROOT / "scripts" / "run_image_worker.py"), "--until-empty"],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0)
+            self.assertIn("Worker completed", result.stdout)
 
 
 class TestCutiControlAppAsync(unittest.IsolatedAsyncioTestCase):
@@ -145,6 +169,15 @@ class TestCutiControlAppAsync(unittest.IsolatedAsyncioTestCase):
             # Test log buffer caching & copy
             app._log("SYSTEM", "SAMPLE_LOG_ENTRY")
             self.assertTrue(any("SAMPLE_LOG_ENTRY" in line for line in app.log_buffers["tab_all"]))
+
+            # Test ANSI stripping & Vietnamese Unicode retention
+            vite_sample = "  \x1b[32m\x1b[1mVITE\x1b[22m v6.4.3\x1b[39m  \x1b[2mready in\x1b[0m 1309 ms ➜"
+            app._log("Vite", vite_sample)
+            app._log("Pipeline", "Tiến trình Pipeline kết thúc thành công (code 0).")
+            last_lines = app.log_buffers["tab_all"]
+            # Verify no raw escape codes or leftover bracketed codes like [32m exist
+            self.assertTrue(any("VITE v6.4.3" in line and "[32m" not in line for line in last_lines))
+            self.assertTrue(any("Tiến trình Pipeline kết thúc thành công (code 0)." in line for line in last_lines))
 
             # Test copy active log action
             app.action_copy_active_log()

@@ -74,6 +74,7 @@ class Settings:
     report_path: Path
     gallery_reconcile_limit: int = 20
     pricing_profile: object | None = None
+    auth_secret: str = ""
 
     @property
     def total_fee_multiplier(self) -> float:

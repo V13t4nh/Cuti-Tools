@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import json
 import math
+import secrets
 import sys
-import urllib.error
-import urllib.parse
-import urllib.request
+import urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
@@ -32,6 +31,23 @@ def _json_float(value: str) -> float:
     return number
 
 
+def _check_auth(headers: object, query: str, secret: str) -> bool:
+    if not secret:
+        return True
+    auth = getattr(headers, "get", lambda _k, _d="": "")("Authorization", "").strip()
+    token = auth[7:].strip() if auth.lower().startswith("bearer ") else auth
+    if not token:
+        val = query_params(query).get("token", "")
+        token = val[0] if isinstance(val, list) and val else (val if isinstance(val, str) else "")
+    if not token:
+        for item in getattr(headers, "get", lambda _k, _d="": "")("Cookie", "").split(";"):
+            k, _, v = item.strip().partition("=")
+            if k == "cuti_token":
+                token = v
+                break
+    return secrets.compare_digest(token, secret) if token else False
+
+
 def _local_origin(value: str) -> bool:
     parsed = urlparse(value)
     return parsed.scheme in {"http", "https"} and parsed.hostname in {"localhost", "127.0.0.1", "::1"} and not parsed.username
@@ -44,6 +60,17 @@ class CutiApiHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+    def _send_auth_cookie(self, token: str, clear: bool = False) -> None:
+        cookie = f"cuti_token={token}; Path=/; SameSite=Lax" if not clear else "cuti_token=; Path=/; Max-Age=0; SameSite=Lax"
+        payload = json.dumps({"ok": not clear, "token": token if not clear else ""}).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Set-Cookie", cookie)
+        self._headers()
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
 
     def _send(self, status: int, data: dict | list) -> None:
         try:
@@ -59,21 +86,33 @@ class CutiApiHandler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def do_OPTIONS(self) -> None:
-        self.send_response(204)
-        self._headers()
-        self.end_headers()
+        self.send_response(204); self._headers(); self.end_headers()
 
     def _dispatch(self, method: str, body: object | None = None) -> None:
         parsed = urlparse(self.path)
-        pricing_route = parsed.path.rstrip("/") in {"/api/pricing-config", "/api/pricing-config/preview"}
+        path = parsed.path.rstrip("/")
+        settings = load_settings()
+        is_auth = _check_auth(self.headers, parsed.query, settings.auth_secret)
+        if path == "/api/auth/check" and method == "GET":
+            self._send(200, {"authenticated": is_auth, "required": bool(settings.auth_secret)}); return
+        if path == "/api/auth/login" and method == "POST":
+            given = str((body if isinstance(body, dict) else {}).get("secret", ""))
+            if not settings.auth_secret or secrets.compare_digest(given, settings.auth_secret):
+                self._send_auth_cookie(settings.auth_secret)
+            else:
+                self._send(401, {"error": {"code": "invalid_credentials", "message": "Mã bảo vệ không chính xác"}})
+            return
+        if path == "/api/auth/logout" and method == "POST":
+            self._send_auth_cookie("", clear=True); return
+        if settings.auth_secret and not is_auth:
+            self._send(401, {"error": {"code": "unauthorized", "message": "Yêu cầu xác thực quyền truy cập"}}); return
+        pricing_route = path in {"/api/pricing-config", "/api/pricing-config/preview"}
         if pricing_route:
             origin = self.headers.get("Origin")
-            if origin and not _local_origin(origin):
+            if origin and not _local_origin(origin) and not is_auth:
                 self._send(403, {"error": {"code": "origin_not_allowed", "message": "pricing configuration is local-only"}})
                 return
-        settings = load_settings()
-        pricing_path = parsed.path.rstrip("/")
-        if (pricing_path == "/api/pricing-config" and method == "GET") or (pricing_path == "/api/pricing-config/preview" and method == "POST") or (pricing_path == "/api/pricing-config" and method == "PUT"):
+        if (path == "/api/pricing-config" and method == "GET") or (path == "/api/pricing-config/preview" and method == "POST") or (path == "/api/pricing-config" and method == "PUT"):
             from .api_pricing import get as pricing_get, write as pricing_write
             status, payload = pricing_get(settings) if method == "GET" else pricing_write(settings, method, body or {})
             self._send(status, payload)
@@ -83,9 +122,9 @@ class CutiApiHandler(BaseHTTPRequestHandler):
             ensure_catalog(conn, load_catalog(settings.rules_path.parent / "catalog.json"), datetime.now(timezone.utc))
             try:
                 if method == "GET":
-                    status, payload = get(conn, settings, parsed.path.rstrip("/"), query_params(parsed.query))
+                    status, payload = get(conn, settings, path, query_params(parsed.query))
                 else:
-                    status, payload = write(conn, settings, method, parsed.path.rstrip("/"), body)
+                    status, payload = write(conn, settings, method, path, body)
             except ApiError as exc:
                 self._send(exc.status, error_payload(exc))
                 return
@@ -99,12 +138,14 @@ class CutiApiHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parts = [urllib.parse.unquote(part) for part in urlparse(self.path).path.strip("/").split("/") if part]
         if len(parts) == 5 and parts[:3] == ["api", "media", "lots"] and parts[4] == "cover":
-            self._stream_cover(parts[3])
-            return
+            self._stream_cover(parts[3]); return
         self._dispatch("GET")
 
     def _stream_cover(self, lot_id: str) -> None:
         settings = load_settings()
+        if settings.auth_secret and not _check_auth(self.headers, urlparse(self.path).query, settings.auth_secret):
+            self._send(401, {"error": {"code": "unauthorized", "message": "Authentication required"}})
+            return
         conn = connect(settings.db_path)
         try:
             image = fetch_lot_image(conn, lot_id)
@@ -140,17 +181,10 @@ class CutiApiHandler(BaseHTTPRequestHandler):
         finally:
             response.close()
 
-    def do_POST(self) -> None:
-        self._dispatch_body("POST")
-
-    def do_PATCH(self) -> None:
-        self._dispatch_body("PATCH")
-
-    def do_PUT(self) -> None:
-        self._dispatch_body("PUT")
-
-    def do_DELETE(self) -> None:
-        self._dispatch("DELETE", {})
+    def do_POST(self) -> None: self._dispatch_body("POST")
+    def do_PATCH(self) -> None: self._dispatch_body("PATCH")
+    def do_PUT(self) -> None: self._dispatch_body("PUT")
+    def do_DELETE(self) -> None: self._dispatch("DELETE", {})
 
     def _dispatch_body(self, method: str) -> None:
         try:

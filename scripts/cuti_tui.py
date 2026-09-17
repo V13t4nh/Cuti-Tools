@@ -22,6 +22,7 @@ from typing import Callable, Optional
 
 # Fallback Guard: check for textual library
 try:
+    from rich.text import Text
     from textual import work
     from textual.app import App, ComposeResult
     from textual.binding import Binding
@@ -39,7 +40,9 @@ try:
     )
     TEXTUAL_AVAILABLE = True
 except ImportError:
+    Text = None
     TEXTUAL_AVAILABLE = False
+    CutiControlApp = None  # type: ignore
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -88,6 +91,84 @@ def kill_process_tree(pid: int) -> None:
                 os.kill(pid, 15)
             except OSError:
                 pass
+
+
+def setup_windows_console() -> None:
+    """Ensure Windows console is configured for UTF-8."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+            ctypes.windll.kernel32.SetConsoleCP(65001)
+        except Exception:
+            pass
+        if hasattr(sys.stdout, "reconfigure"):
+            try:
+                sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+        if hasattr(sys.stderr, "reconfigure"):
+            try:
+                sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+
+def copy_to_system_clipboard(text: str) -> bool:
+    """Copy text to system clipboard with full Unicode support (Win32 CF_UNICODETEXT / UTF-16LE)."""
+    if os.name == "nt":
+        # 1. Native Win32 API clipboard allocation (CF_UNICODETEXT)
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
+            GMEM_MOVEABLE = 0x0002
+            CF_UNICODETEXT = 13
+
+            data = text.encode("utf-16le") + b"\x00\x00"
+
+            kernel32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
+            kernel32.GlobalAlloc.restype = wintypes.HGLOBAL
+            kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+            kernel32.GlobalLock.restype = ctypes.c_void_p
+            kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+            kernel32.GlobalUnlock.restype = wintypes.BOOL
+
+            user32.OpenClipboard.argtypes = [wintypes.HWND]
+            user32.OpenClipboard.restype = wintypes.BOOL
+            user32.EmptyClipboard.argtypes = []
+            user32.EmptyClipboard.restype = wintypes.BOOL
+            user32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
+            user32.SetClipboardData.restype = wintypes.HANDLE
+            user32.CloseClipboard.argtypes = []
+            user32.CloseClipboard.restype = wintypes.BOOL
+
+            if user32.OpenClipboard(None):
+                try:
+                    user32.EmptyClipboard()
+                    h_mem = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(data))
+                    if h_mem:
+                        ptr = kernel32.GlobalLock(h_mem)
+                        if ptr:
+                            ctypes.memmove(ptr, data, len(data))
+                            kernel32.GlobalUnlock(h_mem)
+                            user32.SetClipboardData(CF_UNICODETEXT, h_mem)
+                            return True
+                finally:
+                    user32.CloseClipboard()
+        except Exception:
+            pass
+
+        # 2. Fallback to Windows clip.exe with UTF-16LE encoding (clip.exe decodes UTF-16LE correctly)
+        try:
+            subprocess.run(["clip"], input=text.encode("utf-16le"), check=False)
+            return True
+        except Exception:
+            pass
+
+    return False
 
 
 @dataclass
@@ -152,7 +233,9 @@ class SubprocessTask:
         self.tag = tag
         self.cmd = cmd
         self.cwd = cwd
-        self.env = env or dict(os.environ)
+        self.env = dict(env) if env is not None else dict(os.environ)
+        self.env.setdefault("PYTHONIOENCODING", "utf-8")
+        self.env.setdefault("PYTHONUTF8", "1")
         self.on_line = on_line
         self.on_exit = on_exit
         self.process: Optional[subprocess.Popen[str]] = None
@@ -382,10 +465,25 @@ if TEXTUAL_AVAILABLE:
                 "Refine": "cyan",
             }
             color = color_map.get(tag, "white")
-            formatted = f"[dim]{now}[/dim] [{color}][{tag}][/{color}] {message}"
 
-            # Plain text version for clipboard buffer (stripped of rich markup)
-            plain_msg = re.sub(r"\[/?[a-zA-Z0-9_\#\s]+\]", "", message)
+            if Text is not None:
+                prefix = Text.from_markup(f"[dim]{now}[/dim] [{color}][{tag}][/{color}] ")
+                if "\x1b" in message:
+                    content_text = Text.from_ansi(message)
+                elif "[" in message and "]" in message:
+                    try:
+                        content_text = Text.from_markup(message)
+                    except Exception:
+                        content_text = Text(message)
+                else:
+                    content_text = Text(message)
+                formatted = prefix + content_text
+                plain_msg = content_text.plain
+            else:
+                formatted = f"[dim]{now}[/dim] [{color}][{tag}][/{color}] {message}"
+                plain_msg = re.sub(r"\[/?[a-zA-Z0-9_\#\s]+\]", "", message)
+                plain_msg = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", plain_msg)
+
             plain_line = f"[{now}] [{tag}] {plain_msg}"
 
             buf_all = self.log_buffers["tab_all"]
@@ -626,12 +724,8 @@ if TEXTUAL_AVAILABLE:
             except Exception:
                 pass
 
-            if os.name == "nt":
-                try:
-                    subprocess.run(["clip"], input=text_to_copy.encode("utf-8"), check=False)
-                    copied = True
-                except Exception:
-                    pass
+            if copy_to_system_clipboard(text_to_copy):
+                copied = True
 
             if copied:
                 try:
@@ -720,6 +814,7 @@ if TEXTUAL_AVAILABLE:
 
 
 def main() -> int:
+    setup_windows_console()
     parser = argparse.ArgumentParser(description="CUTI Ops Control Deck (TUI)")
     parser.add_argument("--check", action="store_true", help="Kiểm tra môi trường và thoát")
     args = parser.parse_args()

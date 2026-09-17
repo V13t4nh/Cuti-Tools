@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react'
 import DepthCarousel from './reactbits/DepthCarousel'
 import type { AuctionLot } from '../types'
-import { api } from '../api'
+import { api, mediaUrl } from '../api'
 import AppIcon from './AppIcon'
 
 interface AuctionLotModalProps {
@@ -26,7 +26,8 @@ const dateOnly = (v: string) =>
 
 export function AuctionLotModal({ lot, onClose, onAssessLot }: AuctionLotModalProps) {
   const [images, setImages] = useState<Array<{ image: string; alt?: string; fallback?: string }>>(() => {
-    return lot.cover?.url ? [{ image: lot.cover.url, alt: lot.title }] : []
+    const init = mediaUrl(lot.cover?.url) || lot.cover?.url
+    return init ? [{ image: init, alt: lot.title }] : []
   })
   const [activeIndex, setActiveIndex] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -42,7 +43,7 @@ export function AuctionLotModal({ lot, onClose, onAssessLot }: AuctionLotModalPr
 
         // 1. Cover from Telegram Vault (idx = 0)
         const coverRecord = res.images.find((img) => img.idx === 0)
-        const telegramFallback = coverRecord?.url || lot.cover?.url || undefined
+        const telegramFallback = coverRecord?.url || mediaUrl(lot.cover?.url) || lot.cover?.url || undefined
 
         // 2. Gallery photos from direct CDN (idx >= 1)
         const cdnGallery = res.images.filter(
@@ -65,8 +66,9 @@ export function AuctionLotModal({ lot, onClose, onAssessLot }: AuctionLotModalPr
       })
       .catch(() => {
         // Fallback to Telegram cover on network or API failure
-        if (lot.cover?.url) {
-          setImages([{ image: lot.cover.url, alt: lot.title }])
+        const fb = mediaUrl(lot.cover?.url) || lot.cover?.url
+        if (fb) {
+          setImages([{ image: fb, alt: lot.title }])
         }
       })
       .finally(() => {
@@ -135,6 +137,16 @@ export function AuctionLotModal({ lot, onClose, onAssessLot }: AuctionLotModalPr
                   {!lot.sold && lot.highest_bid_eur != null && (
                     <span>
                       Giá cao nhất: <strong>{money(lot.highest_bid_eur, 'EUR')}</strong>
+                    </span>
+                  )}
+                  {lot.condition_tag && (
+                    <span className="chip-accessory">
+                      {lot.condition_tag === 'fullset' ? 'Đủ bộ (Fullset)' : lot.condition_tag === 'box' ? 'Có hộp (Box)' : lot.condition_tag === 'papers' ? 'Có giấy (Papers)' : 'Chỉ đồng hồ (Naked)'}
+                    </span>
+                  )}
+                  {lot.quality && (
+                    <span className="chip-quality">
+                      {lot.quality === 'new_unworn' ? 'Mới tinh / Chưa đeo' : lot.quality === 'very_good' ? 'Rất đẹp / Ít xước' : lot.quality === 'good' ? 'Khá' : 'Cũ / Cần bảo dưỡng'}
                     </span>
                   )}
                   {lot.bidding_end_at && (
