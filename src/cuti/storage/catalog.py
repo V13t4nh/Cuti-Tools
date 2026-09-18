@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -86,25 +87,31 @@ def search_products(conn: sqlite3.Connection, query: str, limit: int = 10) -> li
     normalized = normalize_text(query)
     if not normalized:
         return []
+    clean_query = re.sub(r"[\s.-]+", "", normalized)
     query_has_digits = any(char.isdigit() for char in normalized)
+    query_words = normalized.replace("-", " ").split()
+    query_spaced = " ".join(query_words)
     conn.row_factory = sqlite3.Row
     rows = conn.execute("SELECT * FROM canonical_products ORDER BY product_id").fetchall()
     ranked: list[tuple[float, str, CanonicalProduct]] = []
     for row in rows:
         product = _row_to_product(row)
         ref = normalize_text(product.reference)
+        clean_ref = re.sub(r"[\s.-]+", "", ref)
         names = [normalize_text(product.canonical_name), *(normalize_text(alias) for alias in product.aliases)]
-        if query_has_digits and normalized != ref and any(char.isdigit() for char in ref):
-            if normalized not in names and normalized not in ref.split():
+        is_exact_ref = (clean_query == clean_ref) or (normalized == ref)
+        ref_in_query = bool(clean_ref and clean_ref in clean_query)
+        if query_has_digits and not is_exact_ref and not ref_in_query:
+            if not any(query_spaced in name or normalized in name for name in names):
                 continue
-        if normalized == ref:
+        if is_exact_ref:
             score = 1000.0
-        elif normalized in names:
+        elif normalized in names or query_spaced in names:
             score = 900.0
-        elif any(normalized in name for name in names):
+        elif any(normalized in name or query_spaced in name for name in names) or ref_in_query:
             score = 800.0
         else:
-            score = max(SequenceMatcher(None, normalized, name).ratio() for name in names) * 100.0
+            score = max(SequenceMatcher(None, query_spaced, name).ratio() for name in names) * 100.0
             if score < 30.0:
                 continue
         ranked.append((score, product.product_id, product))

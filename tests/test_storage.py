@@ -11,13 +11,16 @@ from cuti.models import Condition, Deal, Lot, WatchForm
 from cuti.storage import (
     claim_pending_alerts,
     count_rows,
+    ensure_catalog,
     fetch_quote_audit,
     fetch_lots_for_liquidity,
     fetch_sold_lots_since,
     fetch_unquoted_deals,
     insert_deal_if_new,
     insert_quote,
+    load_catalog,
     mark_alert_sent,
+    search_products,
     search_sold_lots,
     upsert_lots,
 )
@@ -339,6 +342,27 @@ class StorageTests(ProjectTestCase):
         )
         lots = fetch_lots_for_liquidity(self.conn, date(2020, 1, 1))
         self.assertEqual({lot.lot_id for lot in lots}, {"a", "b"})
+
+    def test_search_products_hyphen_and_word_matching(self) -> None:
+        from pathlib import Path
+        catalog = load_catalog(Path(__file__).resolve().parents[1] / "config" / "catalog.json")
+        ensure_catalog(self.conn, catalog, NOW)
+
+        # Reference with hyphen vs without hyphen
+        found_dash = search_products(self.conn, "SPB-143")
+        self.assertEqual([p.product_id for p in found_dash], ["seiko:prospex-spb143"])
+        found_nodash = search_products(self.conn, "SPB143")
+        self.assertEqual([p.product_id for p in found_nodash], ["seiko:prospex-spb143"])
+
+        # Model with hyphen vs without hyphen
+        found_bay_dash = search_products(self.conn, "Black-Bay-58")
+        self.assertEqual([p.product_id for p in found_bay_dash], ["tudor:black-bay-58-79030"])
+        found_bay_space = search_products(self.conn, "Black Bay 58")
+        self.assertEqual([p.product_id for p in found_bay_space], ["tudor:black-bay-58-79030"])
+
+        # Brand - Model/Ref query
+        found_brand_dash = search_products(self.conn, "Seiko - SPB143")
+        self.assertEqual([p.product_id for p in found_brand_dash], ["seiko:prospex-spb143"])
 
 
 if __name__ == "__main__":

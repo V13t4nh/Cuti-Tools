@@ -75,8 +75,25 @@ def list_auctions(conn, settings, params, pagination_fn, freshness_json_fn, fres
     materials_raw = params.get("materials", [""])[0].strip().lower()
     where, args = [], []
     if query:
-        where.append("(instr(lower(coalesce(lot_id, '')), ?) > 0 OR instr(lower(coalesce(title, '')), ?) > 0 OR instr(lower(coalesce(subtitle, '')), ?) > 0)")
-        args.extend([query] * 3)
+        raw_tokens = [t.lstrip("#").strip(".-") for t in query.split() if t.lstrip("#").strip(".-")]
+        words: list[str] = []
+        for t in raw_tokens:
+            parts = [p for p in t.split("-") if p]
+            if len(parts) > 1 and all(p.isalpha() for p in parts):
+                words.extend(parts)
+            else:
+                words.append(t)
+        for w in words:
+            clean = w.replace("-", "")
+            if clean != w and len(clean) >= 3:
+                where.append("(instr(lower(coalesce(lot_id, '')), ?) > 0 OR instr(lower(coalesce(title, '')), ?) > 0 OR instr(replace(lower(coalesce(title, '')), '-', ''), ?) > 0 OR instr(lower(coalesce(subtitle, '')), ?) > 0)")
+                args.extend([w, w, clean, w])
+            elif len(w) >= 3 and any(c.isdigit() for c in w) and any(c.isalpha() for c in w):
+                where.append("(instr(lower(coalesce(lot_id, '')), ?) > 0 OR instr(lower(coalesce(title, '')), ?) > 0 OR instr(replace(lower(coalesce(title, '')), '-', ''), ?) > 0 OR instr(lower(coalesce(subtitle, '')), ?) > 0)")
+                args.extend([w, w, w, w])
+            else:
+                where.append("(instr(lower(coalesce(lot_id, '')), ?) > 0 OR instr(lower(coalesce(title, '')), ?) > 0 OR instr(lower(coalesce(subtitle, '')), ?) > 0)")
+                args.extend([w] * 3)
     has_meta_filter = bool(conditions_raw or qualities_raw or movements_raw or materials_raw)
     if wanted == "settled" or (wanted == "all" and has_meta_filter):
         if conditions_raw:

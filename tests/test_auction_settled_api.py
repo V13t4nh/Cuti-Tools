@@ -94,6 +94,44 @@ class AuctionSettledApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(len(empty_payload["lots"]), 0)
 
+    def test_query_settled_lots_with_hyphens_and_word_tokens(self) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO lots (
+                lot_id, source, title, brand, model_key, condition_tag, form,
+                hearts, sold, hammer_eur, opened_at, ended_at, url, subtitle,
+                bids_count, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "settled-003",
+                "catawiki",
+                "Seiko - King Seiko - 5626-7113 - Men - 1970-1979",
+                "seiko",
+                "seiko:king-seiko",
+                "naked",
+                "round",
+                10,
+                1,
+                350,
+                "2026-08-20",
+                "2026-08-26",
+                "https://example.com/l/settled-003",
+                "Vintage",
+                15,
+                "2026-08-26T12:00:00Z",
+            ),
+        )
+        self.conn.commit()
+
+        for q in ["seiko king", "seiko - king", "seiko-king", "seiko 5626", "5626-7113"]:
+            status, payload = get(
+                self.conn, self.settings, "/api/auction-lots", {"status": ["settled"], "q": [q]}
+            )
+            self.assertEqual(status, 200)
+            lot_ids = [l["lot_id"] for l in payload["lots"]]
+            self.assertIn("settled-003", lot_ids, f"Failed to match query {q!r}")
+
     def test_get_settled_lot_detail(self) -> None:
         status, payload = get(self.conn, self.settings, "/api/auction-lots/settled-001", {})
         self.assertEqual(status, 200)
