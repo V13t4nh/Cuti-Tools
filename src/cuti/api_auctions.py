@@ -66,6 +66,33 @@ def normalize_material(val: str | None, specs: dict) -> str | None:
         return "titanium"
     return val if val in ("steel", "gold", "gold_plated", "titanium") else None
 
+def _live_lot_payload(conn, r, today: str) -> dict[str, object]:
+    s_obj = json.loads(r["specs_json"]) if "specs_json" in r.keys() and r["specs_json"] else {}
+    sub = str(r["subtitle"]).strip() if ("subtitle" in r.keys() and r["subtitle"]) else ""
+    if not s_obj and sub: s_obj = {"Movement": sub, "Case material": sub, "Condition": sub}
+    a_obj = json.loads(r["ai_json"]) if "ai_json" in r.keys() and r["ai_json"] else {}
+    acc = a_obj.get("accessories") if isinstance(a_obj.get("accessories"), dict) else {}
+    cond = a_obj.get("condition_tag") or acc.get("true_condition_tag")
+    if not cond and s_obj:
+        box, papers = bool(s_obj.get("original_box") or s_obj.get("box")), bool(s_obj.get("original_papers") or s_obj.get("papers"))
+        cond = "fullset" if (box and papers) else ("box" if box else ("papers" if papers else None))
+    diam = a_obj.get("case_diameter_mm")
+    if diam is None and s_obj:
+        try:
+            d_val = int(float(str(s_obj.get("Case diameter") or s_obj.get("case_diameter_mm") or "").lower().replace("mm", "").strip()))
+            if 15 <= d_val <= 60: diam = d_val
+        except (ValueError, TypeError): pass
+    return {
+        "lot_id": r["lot_id"], "source": r["source"], "title": r["title"], "subtitle": r["subtitle"], "url": r["url"],
+        "bidding_end_at": r["bidding_end_at"], "status": "open" if r["bidding_end_at"] and r["bidding_end_at"] > today else "waiting",
+        "condition_tag": cond if cond in ("naked", "box", "papers", "fullset") else None,
+        "quality": extract_quality(s_obj, a_obj),
+        "movement": normalize_movement(a_obj.get("movement"), s_obj),
+        "case_material": normalize_material(a_obj.get("case_material"), s_obj),
+        "case_diameter_mm": diam,
+        "cover": cover_metadata(fetch_lot_image(conn, r["lot_id"]))
+    }
+
 def list_auctions(conn, settings, params, pagination_fn, freshness_json_fn, freshness):
     query, wanted = params.get("q", [""])[0].strip().lower(), params.get("status", ["all"])[0].strip().lower()
     today = date.today().isoformat()
@@ -159,6 +186,7 @@ def list_auctions(conn, settings, params, pagination_fn, freshness_json_fn, fres
                 "cover": cover_metadata(fetch_lot_image(conn, r["lot_id"]))
             })
         return {"state": "loaded", "data_freshness": freshness_json_fn(freshness), "lots": lots, "pagination": pagination}
+
     if has_meta_filter:
         where.append("0")
     state_sql = "bidding_end_at IS NOT NULL AND bidding_end_at <> '' AND bidding_end_at > ?"
@@ -168,16 +196,16 @@ def list_auctions(conn, settings, params, pagination_fn, freshness_json_fn, fres
     clause = f" WHERE {' AND '.join(where)}" if where else ""
     total = conn.execute(f"SELECT COUNT(*) FROM live_watch{clause}", args).fetchone()[0]
     offset, pagination = pagination_fn(params, total)
-    rows = conn.execute(f"SELECT lot_id, source, title, subtitle, url, bidding_end_at FROM live_watch{clause} ORDER BY bidding_end_at, lot_id LIMIT ? OFFSET ?", [*args, pagination["page_size"], offset]).fetchall()
-    lots = [{"lot_id": r["lot_id"], "source": r["source"], "title": r["title"], "subtitle": r["subtitle"], "url": r["url"], "bidding_end_at": r["bidding_end_at"], "status": "open" if r["bidding_end_at"] and r["bidding_end_at"] > today else "waiting", "condition_tag": None, "quality": None, "movement": None, "case_material": None, "case_diameter_mm": None, "cover": cover_metadata(fetch_lot_image(conn, r["lot_id"]))} for r in rows]
+    q_live = f"SELECT w.lot_id, w.source, w.title, w.subtitle, w.url, w.bidding_end_at, r.ai_json, d.specs_json FROM (SELECT * FROM live_watch{clause} ORDER BY bidding_end_at, lot_id LIMIT ? OFFSET ?) w LEFT JOIN lot_refinements r ON r.lot_id = w.lot_id AND r.state = 'ready' LEFT JOIN lot_source_details d ON d.lot_id = w.lot_id AND d.state = 'ready'"
+    rows = conn.execute(q_live, [*args, pagination["page_size"], offset]).fetchall()
+    lots = [_live_lot_payload(conn, r, today) for r in rows]
     return {"state": "loaded", "data_freshness": freshness_json_fn(freshness), "lots": lots, "pagination": pagination}
 
 def get_auction_lot(conn, lot_id: str) -> dict[str, object] | None:
-    row = conn.execute("SELECT lot_id, source, title, subtitle, url, bidding_end_at FROM live_watch WHERE lot_id = ?", (lot_id,)).fetchone()
+    q_live = "SELECT w.lot_id, w.source, w.title, w.subtitle, w.url, w.bidding_end_at, r.ai_json, d.specs_json FROM live_watch w LEFT JOIN lot_refinements r ON r.lot_id = w.lot_id AND r.state = 'ready' LEFT JOIN lot_source_details d ON d.lot_id = w.lot_id AND d.state = 'ready' WHERE w.lot_id = ?"
+    row = conn.execute(q_live, (lot_id,)).fetchone()
     if row is not None:
-        end = row["bidding_end_at"]
-        status = "open" if end and end > date.today().isoformat() else "waiting"
-        return {"lot_id": row["lot_id"], "source": row["source"], "title": row["title"], "subtitle": row["subtitle"], "url": row["url"], "bidding_end_at": end, "status": status, "condition_tag": None, "quality": None, "movement": None, "case_material": None, "case_diameter_mm": None, "cover": cover_metadata(fetch_lot_image(conn, row["lot_id"]))}
+        return _live_lot_payload(conn, row, date.today().isoformat())
     row = conn.execute("SELECT lot_id, source, title, subtitle, url, ended_at, hammer_eur, sold, bids_count, hearts, needs_review, source_available, review_status, specs_json, condition_tag, ai_json, movement, case_material, case_diameter_mm FROM lots WHERE lot_id = ?", (lot_id,)).fetchone()
     if row is None:
         return None

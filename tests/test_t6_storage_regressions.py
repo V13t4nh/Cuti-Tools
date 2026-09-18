@@ -56,7 +56,7 @@ class SchemaV4MigrationTests(unittest.TestCase):
                 self.assertIsNone(row["ref_number"])
                 self.assertEqual(row["needs_review"], 0)
                 self.assertEqual(row["review_status"], "pending")
-                self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 4)
+                self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 6)
                 self.assertIsNotNone(
                     conn.execute(
                         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='lot_desc'"

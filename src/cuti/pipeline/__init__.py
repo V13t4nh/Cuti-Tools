@@ -5,6 +5,7 @@ historic ``cuti.pipeline`` API used by the CLI and downstream callers.
 """
 
 from .ingest import IngestReport, ingest_lots
+from .enrichment import DetailEnrichmentReport, materialize_missing_source_details
 from .quote import QuoteReport, quote_watch
 from .report import (
     SettleReport,
@@ -19,6 +20,7 @@ from .watch import WatchReport, watch_deals
 
 __all__ = [
     "IngestReport",
+    "DetailEnrichmentReport",
     "QuoteReport",
     "SettleReport",
     "SourceCheckReport",
@@ -26,6 +28,7 @@ __all__ = [
     "WatchReport",
     "check_source_urls",
     "ingest_lots",
+    "materialize_missing_source_details",
     "ingest_one_lot",
     "quote_watch",
     "settle_lots",

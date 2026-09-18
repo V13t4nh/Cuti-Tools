@@ -39,6 +39,7 @@ export function AuctionLotModal({ lot, lots, onClose, onAssessLot, onSelectLot }
   const [feedback, setFeedback] = useState<string | null>(null)
   const backdropRef = useRef<HTMLDivElement>(null)
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null)
+  const detailBodyRef = useRef<HTMLDivElement>(null)
 
   // Reset active photo index and loading state when lot changes
   useEffect(() => {
@@ -167,8 +168,9 @@ export function AuctionLotModal({ lot, lots, onClose, onAssessLot, onSelectLot }
 
     if (elapsed > 700) return
 
-    // Swipe Horizontal: Prev/Next photo
+    // 1. Swipe Horizontal: Prev/Next photo (when details sheet is closed)
     if (absX > 36 && absX > absY * 1.1) {
+      if (showDetails) return
       if (images.length <= 1) return
       if (deltaX < 0) {
         // Dragged left -> view next photo (slides in from right)
@@ -184,32 +186,23 @@ export function AuctionLotModal({ lot, lots, onClose, onAssessLot, onSelectLot }
       return
     }
 
-    // Swipe Vertical: Prev/Next lot
-    if (absY > 48 && absY > absX * 1.1 && lots && lots.length > 0 && onSelectLot) {
-      const cur = lots.findIndex((l) => l.lot_id === lot.lot_id)
-      if (cur < 0) return
-
-      if (deltaY < 0) {
-        // Swiped UP -> Next product (slides in from bottom)
-        if (cur < lots.length - 1) {
-          const next = lots[cur + 1]
-          setTransitionDir('up')
-          setImageLoaded(false)
-          setFeedback(`Lô #${next.lot_id}`)
-          onSelectLot(next)
-        } else {
-          setFeedback('Đã là lô cuối cùng')
+    // 2. Swipe Vertical
+    if (absY > 48 && absY > absX * 1.1) {
+      if (!showDetails) {
+        if (deltaY < 0) {
+          // Chi tiết đang ĐÓNG + Vuốt LÊN -> Mở Panel Chi tiết
+          setShowDetails(true)
+        } else if (deltaY > 0) {
+          // Chi tiết đang ĐÓNG + Vuốt XUỐNG -> Đóng Modal (quay về danh sách)
+          onClose()
         }
       } else {
-        // Swiped DOWN -> Previous product (slides in from top)
-        if (cur > 0) {
-          const prev = lots[cur - 1]
-          setTransitionDir('down')
-          setImageLoaded(false)
-          setFeedback(`Lô #${prev.lot_id}`)
-          onSelectLot(prev)
-        } else {
-          setFeedback('Đã là lô đầu tiên')
+        if (deltaY > 0) {
+          // Chi tiết đang MỞ + Vuốt XUỐNG -> Hạ/Đóng Panel Chi tiết
+          if (detailBodyRef.current && detailBodyRef.current.scrollTop > 10) {
+            return
+          }
+          setShowDetails(false)
         }
       }
     }
@@ -324,11 +317,6 @@ export function AuctionLotModal({ lot, lots, onClose, onAssessLot, onSelectLot }
                   </div>
                 )}
 
-                {/* Touch hint overlays for swipe */}
-                <div className="mobile-swipe-guide" aria-hidden="true">
-                  <span>‹ vuốt ngang đổi ảnh ›</span>
-                  {lots && lots.length > 1 && <span>↕ vuốt dọc đổi lô</span>}
-                </div>
               </div>
             ) : (
               <div className="empty" style={{ color: '#fff', minHeight: '320px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
@@ -339,15 +327,18 @@ export function AuctionLotModal({ lot, lots, onClose, onAssessLot, onSelectLot }
           </div>
         </div>
 
-        {/* Glassmorphism Detail Sheet Overlay (Triggered by bottom-left Pill) */}
+        {/* Glassmorphism Detail Sheet Overlay (Triggered by bottom-left Pill or Swipe Up) */}
         {showDetails && (
           <div
             className="auction-detail-overlay"
             onClick={(e) => {
               if (e.target === e.currentTarget) setShowDetails(false)
             }}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
           >
             <div className="auction-detail-sheet" role="region" aria-label="Thông số chi tiết">
+              <div className="detail-sheet-handle" aria-hidden="true" />
               <div className="detail-sheet-header">
                 <div>
                   <span className="detail-sheet-tag">Lô #{lot.lot_id}</span>
@@ -363,7 +354,7 @@ export function AuctionLotModal({ lot, lots, onClose, onAssessLot, onSelectLot }
                 </button>
               </div>
 
-              <div className="detail-sheet-body">
+              <div ref={detailBodyRef} className="detail-sheet-body">
                 {/* Finance block */}
                 <div className="detail-sheet-finance">
                   <div className="finance-item">

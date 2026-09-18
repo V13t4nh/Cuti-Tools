@@ -27,6 +27,21 @@ from .quotes import (
 )
 from .schema import LOT_COLUMNS_AFTER_V1, NO, SCHEMA_VERSION, SCHEMA_SQL, YES, connect
 from .schema_migration import ensure_media_queue, rollback_frontend_schema
+from .refinements import (
+    SourceRefinementCandidate,
+    count_unrefined_source_details,
+    fetch_current_source_refinements,
+    fetch_source_refinement_candidates,
+    record_source_refinement_failure,
+    upsert_source_refinement,
+)
+from .source_details import (
+    SourceLotDetails,
+    fetch_source_details,
+    find_lots_missing_source_details,
+    record_source_detail_failure,
+    upsert_source_details,
+)
 from .watch import (
     LiveWatchRow,
     count_live_watch,
@@ -61,6 +76,17 @@ __all__ = [
     "connect",
     "rollback_frontend_schema",
     "ensure_media_queue",
+    "SourceRefinementCandidate",
+    "count_unrefined_source_details",
+    "fetch_current_source_refinements",
+    "fetch_source_refinement_candidates",
+    "record_source_refinement_failure",
+    "upsert_source_refinement",
+    "SourceLotDetails",
+    "fetch_source_details",
+    "find_lots_missing_source_details",
+    "record_source_detail_failure",
+    "upsert_source_details",
     "DataFreshness",
     "assess_data_freshness",
     "CanonicalProduct", "load_catalog", "ensure_catalog", "fetch_product", "search_products",

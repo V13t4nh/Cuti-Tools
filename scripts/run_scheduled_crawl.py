@@ -1,7 +1,6 @@
-"""Scheduled crawler with smart skip logic.
+"""Scheduled crawler — always runs watch-live and settle on every invocation.
 
-If the database was updated recently (e.g. within 2.5 hours by the local worker),
-this runner gracefully skips to avoid duplicate scraping.
+A process lock prevents two instances from running simultaneously.
 """
 
 from __future__ import annotations
@@ -36,73 +35,35 @@ def _crawl_lock(path: Path):
         raise CrawlAlreadyRunning(str(exc)) from exc
 
 
-def _is_recently_updated(conn: object, max_age_hours: float = 2.5) -> bool:
-    if max_age_hours <= 0:
-        raise ValueError("freshness threshold must be positive")
-    row = conn.execute(
-        """
-        SELECT MAX(updated_at) FROM (
-            SELECT MAX(updated_at) AS updated_at FROM lots
-            UNION ALL
-            SELECT MAX(last_seen_at) AS updated_at FROM live_watch
-        )
-        """
-    ).fetchone()
-    raw = row[0] if row else None
-    if raw is None:
-        return False
-    try:
-        last_time = datetime.fromisoformat(raw)
-    except (TypeError, ValueError) as exc:
-        raise RuntimeError(
-            f"invalid freshness timestamp in lots.updated_at/live_watch.last_seen_at: {raw!r}"
-        ) from exc
-    if last_time.tzinfo is None:
-        raise RuntimeError(
-            f"freshness timestamp has no timezone in lots.updated_at/live_watch.last_seen_at: {raw!r}"
-        )
-    age = (datetime.now(timezone.utc) - last_time.astimezone(timezone.utc)).total_seconds() / 3600.0
-    if age < 0:
-        raise RuntimeError(f"freshness timestamp is in the future: {raw!r}")
-    if age < max_age_hours:
-        print(
-            f"[SKIP] Database was already updated {age:.1f}h ago "
-            f"(threshold: {max_age_hours}h). Skipping scheduled crawl."
-        )
-        return True
-    return False
-
-
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the scheduled watch-live and settle crawl.")
-    parser.add_argument("--force", action="store_true", help="run even when data was updated recently")
+    parser.add_argument("--force", action="store_true", help="(no-op, kept for backward compatibility)")
     return parser.parse_args(argv)
 
 
-def run_scheduled_flow(conn: object, settings: object, rules: object, now: datetime,
-                       *, api: object = None, force: bool = False) -> tuple[bool, list[str]]:
-    """Run the shared freshness-guarded watch-live and settlement sequence."""
-    from cuti.storage import fetch_live_watch_due
-    due_lots = fetch_live_watch_due(conn, until=now.date(), limit=1)
-    recently_updated = _is_recently_updated(conn)
-    if not force and recently_updated and not due_lots:
-        print("[SKIP] Fresh database and no due lots; crawl and settlement skipped.", flush=True)
-        return True, []
+def run_scheduled_flow(
+    conn: object, settings: object, rules: object, now: datetime,
+    *, api: object = None, force: bool = False,
+) -> tuple[bool, list[str]]:
+    """Always run watch-live then settle; no freshness guard."""
     errors: list[str] = []
-    if force or not recently_updated:
-        print("[START] Running scheduled watch-live...", flush=True)
-        watch_rep = watch_live(conn, settings, now, api=api)
-        print(
-            f"[WATCH-LIVE] Seen: {watch_rep.lots_seen}, Tracked: {watch_rep.lots_tracked}, "
-            f"Queue: {count_rows(conn, 'live_watch')}", flush=True,
-        )
-    else:
-        print("[INFO] Watch-live skipped (recently updated); settling overdue queue...", flush=True)
-    print("[START] Running scheduled settle...", flush=True)
-    settle_rep = settle_lots(conn, rules, settings, now.date(), now, api=api, record_unclassified=True, max_rounds=25)
+    print("[START] Running scheduled watch-live...", flush=True)
+    watch_rep = watch_live(conn, settings, now, api=api)
     print(
-        f"[SETTLE] Candidates: {settle_rep.candidates}, Sold: {settle_rep.sold}, Unsold: {settle_rep.unsold}, "
-        f"Lots written: {settle_rep.lots_written}, Lots total: {count_rows(conn, 'lots')}", flush=True,
+        f"[WATCH-LIVE] Seen: {watch_rep.lots_seen}, Tracked: {watch_rep.lots_tracked}, "
+        f"Details: {watch_rep.details_materialized}/{watch_rep.details_candidates}, "
+        f"Queue: {count_rows(conn, 'live_watch')}", flush=True,
+    )
+    errors.extend(watch_rep.detail_failures)
+    print("[START] Running scheduled settle...", flush=True)
+    settle_rep = settle_lots(
+        conn, rules, settings, now.date(), now,
+        api=api, record_unclassified=True, max_rounds=25,
+    )
+    print(
+        f"[SETTLE] Candidates: {settle_rep.candidates}, Sold: {settle_rep.sold}, "
+        f"Unsold: {settle_rep.unsold}, Lots written: {settle_rep.lots_written}, "
+        f"Lots total: {count_rows(conn, 'lots')}", flush=True,
     )
     errors.extend(settle_rep.errors)
     if settle_rep.details_failed and not settle_rep.errors:

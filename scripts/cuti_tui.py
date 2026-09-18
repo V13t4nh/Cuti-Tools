@@ -56,41 +56,51 @@ def is_port_open(port: int, host: str = "127.0.0.1") -> bool:
         return s.connect_ex((host, port)) == 0
 
 
-def kill_process_tree(pid: int) -> None:
-    """Safely terminate a process and all its child processes."""
+def kill_process_tree(pid: int) -> int:
+    """Safely terminate a process and all its child processes. Returns count of terminated procs."""
+    killed_count = 0
     try:
         import psutil
-        parent = psutil.Process(pid)
-        children = parent.children(recursive=True)
-        for child in children:
-            try:
-                child.terminate()
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
         try:
-            parent.terminate()
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
-        gone, alive = psutil.wait_procs(children + [parent], timeout=2.0)
-        for p in alive:
+            parent = psutil.Process(pid)
+            children = parent.children(recursive=True)
+            procs = children + [parent]
+            for child in children:
+                try:
+                    child.terminate()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
             try:
-                p.kill()
+                parent.terminate()
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
+            gone, alive = psutil.wait_procs(procs, timeout=2.0)
+            killed_count += len(gone)
+            for p in alive:
+                try:
+                    p.kill()
+                    killed_count += 1
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            return max(killed_count, 1)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return 0
     except ImportError:
         # Fallback if psutil is not available
         if os.name == "nt":
-            subprocess.run(
+            res = subprocess.run(
                 ["taskkill", "/F", "/T", "/PID", str(pid)],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 check=False,
             )
+            return 1 if res.returncode == 0 else 0
         else:
             try:
                 os.kill(pid, 15)
+                return 1
             except OSError:
-                pass
+                return 0
 
 
 def setup_windows_console() -> None:
@@ -278,11 +288,13 @@ class SubprocessTask:
                 if self.on_exit and not self._stopped:
                     self.on_exit(self.tag, code)
 
-    def stop(self) -> None:
-        """Stop the process gracefully."""
+    def stop(self) -> int:
+        """Stop the process gracefully and terminate all children."""
         self._stopped = True
+        killed = 0
         if self.process and self.process.poll() is None:
-            kill_process_tree(self.process.pid)
+            killed = kill_process_tree(self.process.pid)
+        return killed
 
 
 if TEXTUAL_AVAILABLE:
@@ -350,6 +362,30 @@ if TEXTUAL_AVAILABLE:
             height: 1fr;
         }
 
+        #right-panel {
+            width: 1fr;
+            height: 1fr;
+        }
+
+        #pipeline-stepper {
+            height: 8;
+            background: #0f172a;
+            border: round #334155;
+            padding: 0 1;
+            margin-bottom: 1;
+        }
+
+        #stepper-title {
+            text-style: bold;
+            color: #38bdf8;
+            margin-bottom: 0;
+        }
+
+        .step-row {
+            height: 1;
+            color: #cbd5e1;
+        }
+
         TabbedContent {
             height: 1fr;
         }
@@ -385,6 +421,9 @@ if TEXTUAL_AVAILABLE:
             super().__init__()
             self.running_tasks: dict[str, SubprocessTask] = {}
             self.current_batch_task: Optional[SubprocessTask] = None
+            self.current_stage: Optional[int] = None
+            self.tele_total: int = 0
+            self.tele_uploaded: int = 0
             self.dev_active = False
             self.batch_running = False
             self.log_buffers: dict[str, list[str]] = {
@@ -416,15 +455,24 @@ if TEXTUAL_AVAILABLE:
                         yield Button("Copy log [y]", id="btn_copy", classes="action-btn")
                         yield Button("Thoát [q]", id="btn_quit", variant="error", classes="action-btn")
 
-                with TabbedContent(id="tabs"):
-                    with TabPane("Tất cả Log", id="tab_all"):
-                        yield RichLog(id="log_all", max_lines=2000, highlight=True, markup=True, wrap=True)
-                    with TabPane("FastAPI (:8000)", id="tab_api"):
-                        yield RichLog(id="log_api", max_lines=2000, highlight=True, markup=True, wrap=True)
-                    with TabPane("Vite (:5173)", id="tab_vite"):
-                        yield RichLog(id="log_vite", max_lines=2000, highlight=True, markup=True, wrap=True)
-                    with TabPane("Pipeline & Tasks", id="tab_pipe"):
-                        yield RichLog(id="log_pipe", max_lines=2000, highlight=True, markup=True, wrap=True)
+                with Vertical(id="right-panel"):
+                    with Vertical(id="pipeline-stepper"):
+                        yield Static("🚀 [bold cyan]TIẾN TRÌNH PIPELINE DAILY (5 BƯỚC)[/bold cyan]", id="stepper-title")
+                        yield Static("[1/5] Quét sàn Catawiki      : [dim]CHỜ[/dim]", id="step_1", classes="step-row")
+                        yield Static("[2/5] Tải chi tiết & Gallery : [dim]CHỜ[/dim]", id="step_2", classes="step-row")
+                        yield Static("[3/5] Chốt kết quả đấu giá   : [dim]CHỜ[/dim]", id="step_3", classes="step-row")
+                        yield Static("[4/5] AI Gemini Chuẩn hoá    : [dim]CHỜ[/dim]", id="step_4", classes="step-row")
+                        yield Static("[5/5] Đồng bộ ảnh Telegram   : [dim]CHỜ[/dim]", id="step_5", classes="step-row")
+
+                    with TabbedContent(id="tabs"):
+                        with TabPane("Tất cả Log", id="tab_all"):
+                            yield RichLog(id="log_all", max_lines=2000, highlight=True, markup=True, wrap=True)
+                        with TabPane("FastAPI (:8000)", id="tab_api"):
+                            yield RichLog(id="log_api", max_lines=2000, highlight=True, markup=True, wrap=True)
+                        with TabPane("Vite (:5173)", id="tab_vite"):
+                            yield RichLog(id="log_vite", max_lines=2000, highlight=True, markup=True, wrap=True)
+                        with TabPane("Pipeline & Tasks", id="tab_pipe"):
+                            yield RichLog(id="log_pipe", max_lines=2000, highlight=True, markup=True, wrap=True)
 
             yield Footer()
 
@@ -522,8 +570,198 @@ if TEXTUAL_AVAILABLE:
                 except Exception:
                     pass
 
+        def _reset_stepper(self) -> None:
+            """Reset all 5 stepper stage indicators to waiting state."""
+            self.current_stage = None
+            self.tele_total = 0
+            self.tele_uploaded = 0
+            try:
+                self.query_one("#step_1", Static).update("[1/5] Quét sàn Catawiki      : [dim]CHỜ[/dim]")
+                self.query_one("#step_2", Static).update("[2/5] Tải chi tiết & Gallery : [dim]CHỜ[/dim]")
+                self.query_one("#step_3", Static).update("[3/5] Chốt kết quả đấu giá   : [dim]CHỜ[/dim]")
+                self.query_one("#step_4", Static).update("[4/5] AI Gemini Chuẩn hoá    : [dim]CHỜ[/dim]")
+                self.query_one("#step_5", Static).update("[5/5] Đồng bộ ảnh Telegram   : [dim]CHỜ[/dim]")
+            except Exception:
+                pass
+
+        def _handle_stepper_update(self, line: str) -> bool:
+            """Update stepper widgets based on log markers; return True if line should be hidden from log."""
+            try:
+                # 1. SUMMARY markers (evaluated first so [SUMMARY] [STAGE-X] never triggers START handlers)
+                if "[SUMMARY]" in line:
+                    if "[STAGE-1:CRAWL]" in line:
+                        m = re.search(r"pages=(\d+)\s+\|\s+seen=(\d+)\s+\|\s+tracked=(\d+)", line)
+                        if m:
+                            pages, seen, tracked = m.group(1), int(m.group(2)), m.group(3)
+                            self.query_one("#step_1", Static).update(
+                                f"[1/5] Quét sàn Catawiki      : [bold green]HOÀN TẤT ✅[/bold green] {pages} trang | {seen:,} lô ({tracked} mới)"
+                            )
+                        else:
+                            self.query_one("#step_1", Static).update("[1/5] Quét sàn Catawiki      : [bold green]HOÀN TẤT ✅[/bold green]")
+                        return False
+
+                    if "[STAGE-2:DETAILS]" in line:
+                        m = re.search(r"target=(\d+)\s+\|\s+success=(\d+)\s+\|\s+images_added=(\d+)\s+\|\s+failed=(\d+)", line)
+                        if m:
+                            tgt, succ, img, fail = m.group(1), m.group(2), m.group(3), m.group(4)
+                            fail_text = f" ({fail} lỗi)" if fail != "0" else ""
+                            self.query_one("#step_2", Static).update(
+                                f"[2/5] Tải chi tiết & Gallery : [bold green]HOÀN TẤT ✅[/bold green] {succ}/{tgt} lô (100%) | +{img} ảnh gallery{fail_text}"
+                            )
+                        else:
+                            self.query_one("#step_2", Static).update("[2/5] Tải chi tiết & Gallery : [bold green]HOÀN TẤT ✅[/bold green]")
+                        return False
+
+                    if "[STAGE-3:SETTLE]" in line:
+                        m = re.search(r"candidates=(\d+)\s+\|\s+sold=(\d+)\s+\|\s+unsold=(\d+)\s+\|\s+open=(\d+)\s+\|\s+written=(\d+)", line)
+                        if m:
+                            cands, sold, unsold, still_open, written = m.group(1), m.group(2), m.group(3), m.group(4), m.group(5)
+                            self.query_one("#step_3", Static).update(
+                                f"[3/5] Chốt kết quả đấu giá   : [bold green]HOÀN TẤT ✅[/bold green] {cands} lô ({sold} bán, {unsold} trượt, {still_open} mở)"
+                            )
+                        else:
+                            self.query_one("#step_3", Static).update("[3/5] Chốt kết quả đấu giá   : [bold green]HOÀN TẤT ✅[/bold green]")
+                        return False
+
+                    if "[STAGE-4:REFINE]" in line or "[STAGE-5:REFINE]" in line:
+                        m = re.search(r"processed=(\d+)\s+\|\s+success=(\d+)\s+\|\s+remaining=(\d+)", line)
+                        if m:
+                            proc, succ, rem = m.group(1), m.group(2), m.group(3)
+                            self.query_one("#step_4", Static).update(
+                                f"[4/5] AI Gemini Chuẩn hoá    : [bold green]HOÀN TẤT ✅[/bold green] Đã tinh chỉnh {succ}/{proc} lô (còn {rem})"
+                            )
+                        elif "100%" in line:
+                            self.query_one("#step_4", Static).update("[4/5] AI Gemini Chuẩn hoá    : [bold green]HOÀN TẤT ✅[/bold green] 100% lô đã được chuẩn hoá")
+                        else:
+                            self.query_one("#step_4", Static).update("[4/5] AI Gemini Chuẩn hoá    : [bold green]HOÀN TẤT ✅[/bold green]")
+                        return False
+
+                    if "[STAGE-5:TELEGRAM]" in line or "[STAGE-4:TELEGRAM]" in line:
+                        m = re.search(r"uploaded=(\d+)\s+\|\s+remaining=(\d+)", line)
+                        if m:
+                            up, rem = m.group(1), m.group(2)
+                            rem_text = f" (còn {rem} ảnh)" if rem != "0" else ""
+                            self.query_one("#step_5", Static).update(
+                                f"[5/5] Đồng bộ ảnh Telegram   : [bold green]HOÀN TẤT ✅[/bold green] Đã đồng bộ {up} ảnh{rem_text}"
+                            )
+                        else:
+                            self.query_one("#step_5", Static).update("[5/5] Đồng bộ ảnh Telegram   : [bold green]HOÀN TẤT ✅[/bold green]")
+                        return False
+
+                # 2. ERROR markers
+                if "[ERROR]" in line:
+                    if "[STAGE-1:CRAWL]" in line:
+                        self.query_one("#step_1", Static).update("[1/5] Quét sàn Catawiki      : [bold red]LỖI ❌[/bold red] Đứt kết nối / Sàn chặn")
+                    elif "[STAGE-4:REFINE]" in line or "[STAGE-5:REFINE]" in line:
+                        self.query_one("#step_4", Static).update("[4/5] AI Gemini Chuẩn hoá    : [bold red]LỖI ❌[/bold red] Lỗi phân tích AI")
+                    return False
+
+                # 3. PROGRESS markers (absorbed from RichLog, updated in-place)
+                if "[PROGRESS:CRAWL]" in line:
+                    self.current_stage = 1
+                    m = re.search(r"page=(\d+)\s+seen=(\d+)", line)
+                    if m:
+                        page, seen = m.group(1), int(m.group(2))
+                        self.query_one("#step_1", Static).update(
+                            f"[1/5] Quét sàn Catawiki      : [bold yellow]ĐANG CHẠY ⏳[/bold yellow] Trang {page} | {seen:,} lô tìm thấy"
+                        )
+                    return True
+
+                if "[PROGRESS:DETAILS]" in line:
+                    self.current_stage = 2
+                    m = re.search(r"current=(\d+)\s+total=(\d+)\s+lot=(\S+)\s+materialized=(\d+)", line)
+                    if m:
+                        cur, tot, lid, mat = int(m.group(1)), int(m.group(2)), m.group(3), m.group(4)
+                        pct = int((cur / tot) * 100) if tot > 0 else 0
+                        self.query_one("#step_2", Static).update(
+                            f"[2/5] Tải chi tiết & Gallery : [bold yellow]ĐANG CHẠY ⏳[/bold yellow] {cur}/{tot} lô ({pct}%) | +{mat} ảnh [#{lid}]"
+                        )
+                    return True
+
+                if "[PROGRESS:SETTLE]" in line:
+                    self.current_stage = 3
+                    m = re.search(r"round=(\d+)\s+current=(\d+)\s+total=(\d+)\s+lot=(\S+)", line)
+                    if m:
+                        rnd, cur, tot, lid = m.group(1), int(m.group(2)), int(m.group(3)), m.group(4)
+                        pct = int((cur / tot) * 100) if tot > 0 else 0
+                        self.query_one("#step_3", Static).update(
+                            f"[3/5] Chốt kết quả đấu giá   : [bold yellow]ĐANG CHẠY ⏳[/bold yellow] Vòng {rnd}: {cur}/{tot} lô ({pct}%) [#{lid}]"
+                        )
+                    return True
+
+                if "[BATCH]" in line:
+                    self.current_stage = 5
+                    m = re.search(r"Uploaded:\s*(\d+)", line)
+                    if m:
+                        up = int(m.group(1))
+                        self.tele_uploaded += up
+                        if self.tele_total > 0:
+                            cur = min(self.tele_uploaded, self.tele_total)
+                            pct = int((cur / self.tele_total) * 100)
+                            rem = max(0, self.tele_total - cur)
+                            self.query_one("#step_5", Static).update(
+                                f"[5/5] Đồng bộ ảnh Telegram   : [bold yellow]ĐANG CHẠY ⏳[/bold yellow] {cur}/{self.tele_total} ảnh ({pct}%) | Còn lại {rem} ảnh"
+                            )
+                        else:
+                            self.query_one("#step_5", Static).update(
+                                f"[5/5] Đồng bộ ảnh Telegram   : [bold yellow]ĐANG CHẠY ⏳[/bold yellow] Đã tải {self.tele_uploaded} ảnh lên channel"
+                            )
+                    return True
+
+                # 4. START markers (only triggered when not summary, not error, not progress)
+                if "[STAGE-1:CRAWL]" in line:
+                    self.current_stage = 1
+                    self.query_one("#step_1", Static).update("[1/5] Quét sàn Catawiki      : [bold yellow]ĐANG CHẠY ⏳[/bold yellow] Bắt đầu quét sàn")
+                    return False
+
+                if "[STAGE-2:DETAILS]" in line:
+                    self.current_stage = 2
+                    self.query_one("#step_2", Static).update("[2/5] Tải chi tiết & Gallery : [bold yellow]ĐANG CHẠY ⏳[/bold yellow] Bắt đầu nạp dữ liệu")
+                    return False
+
+                if "[STAGE-3:SETTLE]" in line:
+                    self.current_stage = 3
+                    self.query_one("#step_3", Static).update("[3/5] Chốt kết quả đấu giá   : [bold yellow]ĐANG CHẠY ⏳[/bold yellow] Đang kiểm tra các lô đến hạn")
+                    return False
+
+                if "[STAGE-4:REFINE]" in line or "[STAGE-5:REFINE]" in line:
+                    if "Skip" in line or "Bỏ qua" in line or "not configured" in line:
+                        self.query_one("#step_4", Static).update("[4/5] AI Gemini Chuẩn hoá    : [dim]BỎ QUA (Chưa có cookie)[/dim]")
+                    else:
+                        self.current_stage = 4
+                        m = re.search(r"\((\d+)\s+lots\)", line)
+                        tot_str = f" ({m.group(1)} lô)" if m else ""
+                        self.query_one("#step_4", Static).update(f"[4/5] AI Gemini Chuẩn hoá    : [bold yellow]ĐANG CHẠY ⏳[/bold yellow] Đang phân tích{tot_str}")
+                    return False
+
+                if "[STAGE-5:TELEGRAM]" in line or "[STAGE-4:TELEGRAM]" in line:
+                    self.current_stage = 5
+                    m = re.search(r"queue:\s*(\d+)", line)
+                    if m:
+                        self.tele_total = int(m.group(1))
+                        self.tele_uploaded = 0
+                        rem = self.tele_total
+                        self.query_one("#step_5", Static).update(
+                            f"[5/5] Đồng bộ ảnh Telegram   : [bold yellow]ĐANG CHẠY ⏳[/bold yellow] 0/{self.tele_total} ảnh (0%) | Còn lại {rem} ảnh"
+                        )
+                    else:
+                        self.query_one("#step_5", Static).update("[5/5] Đồng bộ ảnh Telegram   : [bold yellow]ĐANG CHẠY ⏳[/bold yellow] Đang kết nối Telegram")
+                    return False
+
+                # Hide noisy intermediate prints from log
+                if "[SETTLE PROGRESS]" in line or "[DETAILS PROGRESS]" in line:
+                    return True
+            except Exception:
+                pass
+            return False
+
+        def _route_subprocess_line(self, tag: str, line: str) -> None:
+            is_noise = self._handle_stepper_update(line)
+            if not is_noise:
+                self._log(tag, line)
+
         def _on_subprocess_line(self, tag: str, line: str) -> None:
-            self.call_from_thread(self._log, tag, line)
+            self.call_from_thread(self._route_subprocess_line, tag, line)
 
         def _on_subprocess_exit(self, tag: str, code: int) -> None:
             status_text = f"[bold green]kết thúc thành công (code 0)[/bold green]" if code == 0 else f"[bold red]thoát với mã lỗi {code}[/bold red]"
@@ -541,6 +779,22 @@ if TEXTUAL_AVAILABLE:
                 card_pipe.update(f"{tag}: [bold green]XONG (0)[/bold green]")
             elif code == 130:
                 card_pipe.update(f"{tag}: [bold yellow]ĐÃ DỪNG[/bold yellow]")
+                if self.current_stage:
+                    labels = {
+                        1: "[1/5] Quét sàn Catawiki     ",
+                        2: "[2/5] Tải chi tiết & Gallery",
+                        3: "[3/5] Chốt kết quả đấu giá  ",
+                        4: "[4/5] AI Gemini Chuẩn hoá   ",
+                        5: "[5/5] Đồng bộ ảnh Telegram  ",
+                    }
+                    lbl = labels.get(self.current_stage, f"[{self.current_stage}/5] Tiến trình")
+                    try:
+                        self.query_one(f"#step_{self.current_stage}", Static).update(
+                            f"{lbl} : [bold red]ĐÃ DỪNG ⛔[/bold red] (Người dùng đã hủy tác vụ)"
+                        )
+                    except Exception:
+                        pass
+                    self.current_stage = None
             else:
                 card_pipe.update(f"{tag}: [bold red]LỖI ({code})[/bold red]")
             btn_pipe = self.query_one("#btn_pipeline", Button)
@@ -610,6 +864,8 @@ if TEXTUAL_AVAILABLE:
                     pass
                 return
             self.batch_running = True
+            if tag == "Pipeline":
+                self._reset_stepper()
             card_pipe = self.query_one("#card_pipe", Static)
             card_pipe.update(f"{tag}: [bold yellow]RUNNING...[/bold yellow]")
 
@@ -666,7 +922,7 @@ if TEXTUAL_AVAILABLE:
             self._start_batch_job(
                 name="Gemini Refine",
                 tag="Refine",
-                cmd=[sys.executable, "scripts/run_llm_refine.py"],
+                cmd=[sys.executable, "scripts/run_llm_refine.py", "--update-db"],
             )
 
         def action_stop_batch_task(self) -> None:
@@ -678,11 +934,19 @@ if TEXTUAL_AVAILABLE:
                     pass
                 return
 
-            self._log("SYSTEM", "[bold yellow]Đang yêu cầu dừng tác vụ hiện tại...[/bold yellow]")
             task = self.current_batch_task
+            pid_info = f"PID {task.process.pid}" if task.process else "PID N/A"
+            self._log("SYSTEM", f"[bold yellow]Đang gửi lệnh dừng tác vụ {task.name} ({pid_info})...[/bold yellow]")
             self.current_batch_task = None
-            task.stop()
+            if task.tag.lower() in self.running_tasks:
+                del self.running_tasks[task.tag.lower()]
+            killed = task.stop()
             self._finish_batch_task(task.tag, 130)
+            self._log("SYSTEM", f"[bold green]Đã dừng thành công tác vụ {task.name} ({pid_info}, đã đóng {killed} tiến trình).[/bold green]")
+            try:
+                self.notify(f"Đã dừng tác vụ {task.name} thành công ({killed} tiến trình đã đóng).", title="Dừng tác vụ", severity="information")
+            except Exception:
+                pass
 
         def action_clear_active_log(self) -> None:
             """Clear log of currently active tab."""

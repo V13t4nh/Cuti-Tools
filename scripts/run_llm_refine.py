@@ -1,10 +1,4 @@
-"""Continuous & batch Watch Refinement Engine using Google Gemini Web API.
-
-This standalone worker reads watch auction lots from SQLite (var/auctions.db),
-decompresses seller descriptions from lot_desc, and leverages Gemini Web
-(via gemini_webapi) in micro-batches (default: 3 lots/prompt) to extract
-accurate, standardized technical watch profiles and activate Tier 4 overrides.
-"""
+"""Refine materialized source-detail snapshots with Google Gemini Web API."""
 
 from __future__ import annotations
 
@@ -17,7 +11,6 @@ import signal
 import sqlite3
 import sys
 import time
-import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -29,6 +22,7 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
 DEFAULT_DB_PATH = PROJECT_ROOT / "var" / "auctions.db"
 DEFAULT_LOCK_PATH = DEFAULT_DB_PATH.with_suffix(DEFAULT_DB_PATH.suffix + ".refine.lock")
 COOKIE_FILE_PATH = PROJECT_ROOT / "var" / "gemini_cookie.json"
@@ -38,6 +32,14 @@ try:
     from process_lock import ProcessLockBusy, process_lock
 except ImportError:
     from scripts.process_lock import ProcessLockBusy, process_lock
+
+from cuti.storage import (
+    connect,
+    count_unrefined_source_details,
+    fetch_source_refinement_candidates,
+    record_source_refinement_failure,
+    upsert_source_refinement,
+)
 
 SYSTEM_PROMPT = """You are an expert luxury and vintage watch appraiser and technical cataloger.
 Your task is to analyze watch auction listings (Title, Platform Specs, and Seller's Full Description) and extract an authoritative, standardized technical profile for each watch.
@@ -209,14 +211,8 @@ def load_cookies(cookie_path: Path | str | None = None) -> tuple[str, str]:
 
 
 def count_unrefined_lots(conn: sqlite3.Connection, force: bool = False) -> int:
-    """Return count of lots needing refinement."""
-    cur = conn.cursor()
-    if force:
-        cur.execute("SELECT count(*) FROM lots l JOIN lot_desc d ON l.lot_id = d.lot_id")
-    else:
-        cur.execute("SELECT count(*) FROM lots l JOIN lot_desc d ON l.lot_id = d.lot_id WHERE l.ai_json IS NULL")
-    row = cur.fetchone()
-    return int(row[0]) if row else 0
+    """Return source snapshots whose current hash has not been refined."""
+    return count_unrefined_source_details(conn, force=force)
 
 
 def fetch_batch_lots(
@@ -226,78 +222,21 @@ def fetch_batch_lots(
     force: bool = False,
     exclude_ids: set[str] | list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Fetch next batch of lots with seller descriptions."""
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-
-    if lot_ids:
-        placeholders = ",".join("?" for _ in lot_ids)
-        cur.execute(
-            f"""
-            SELECT l.lot_id, l.title, l.brand, l.model, l.ref_number, l.caliber,
-                   l.case_code, l.movement, l.case_material, l.case_diameter_mm,
-                   l.condition_tag, l.needs_review, l.review_status, l.specs_json,
-                   d.desc_z
-            FROM lots l
-            JOIN lot_desc d ON l.lot_id = d.lot_id
-            WHERE l.lot_id IN ({placeholders})
-            """,
-            lot_ids,
-        )
-    else:
-        clauses = []
-        params: list[Any] = []
-        if not force:
-            clauses.append("l.ai_json IS NULL")
-        if exclude_ids:
-            ex_ph = ",".join("?" for _ in exclude_ids)
-            clauses.append(f"l.lot_id NOT IN ({ex_ph})")
-            params.extend(list(exclude_ids))
-        filter_clause = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-        params.append(limit)
-        cur.execute(
-            f"""
-            SELECT l.lot_id, l.title, l.brand, l.model, l.ref_number, l.caliber,
-                   l.case_code, l.movement, l.case_material, l.case_diameter_mm,
-                   l.condition_tag, l.needs_review, l.review_status, l.specs_json,
-                   d.desc_z
-            FROM lots l
-            JOIN lot_desc d ON l.lot_id = d.lot_id
-            {filter_clause}
-            ORDER BY l.needs_review DESC, l.ended_at DESC
-            LIMIT ?
-            """,
-            params,
-        )
-
-    rows = cur.fetchall()
-    results = []
-    for row in rows:
-        raw_desc = ""
-        if row["desc_z"]:
-            try:
-                raw_desc = zlib.decompress(row["desc_z"]).decode("utf-8", errors="replace")
-            except Exception as exc:
-                raw_desc = f"[Decompress error: {exc}]"
-
-        results.append({
-            "lot_id": str(row["lot_id"]),
-            "title": row["title"],
-            "brand": row["brand"],
-            "model": row["model"],
-            "ref_number": row["ref_number"],
-            "caliber": row["caliber"],
-            "case_code": row["case_code"],
-            "movement": row["movement"],
-            "case_material": row["case_material"],
-            "case_diameter_mm": row["case_diameter_mm"],
-            "condition_tag": row["condition_tag"],
-            "needs_review": row["needs_review"],
-            "review_status": row["review_status"],
-            "specs_json": row["specs_json"],
-            "description": raw_desc,
-        })
-    return results
+    """Fetch ready source snapshots, regardless of whether their lots settled."""
+    candidates = fetch_source_refinement_candidates(
+        conn, lot_ids=lot_ids, limit=limit, force=force, exclude_ids=exclude_ids or (),
+    )
+    return [
+        {
+            "lot_id": item.lot_id,
+            "source_hash": item.source_hash,
+            "title": item.title,
+            "specs_json": item.specs_json,
+            "description": item.description or "",
+            "ref_number": None,
+        }
+        for item in candidates
+    ]
 
 
 def build_batch_prompt(lots: list[dict[str, Any]]) -> str:
@@ -528,81 +467,11 @@ class GeminiAppraiser:
         return None
 
 
-def apply_refinement(conn: sqlite3.Connection, lot_id: str, ai_data: dict[str, Any]) -> None:
-    """Save ai_json, generate Tier 4 override_json, and update columns in SQLite."""
-    identity = ai_data.get("identity") or {}
-    specs = ai_data.get("specs") or {}
-    accessories = ai_data.get("accessories") or {}
-    audit = ai_data.get("audit") or {}
-
-    override: dict[str, Any] = {}
-    new_ref = identity.get("ref_number")
-    new_cal = identity.get("caliber")
-    new_model = identity.get("model")
-    new_case_code = identity.get("case_code")
-    new_mov = specs.get("movement")
-    new_mat = specs.get("case_material")
-    new_dia = specs.get("case_diameter_mm")
-
-    if new_ref:
-        override["ref_number"] = new_ref
-    if new_cal:
-        override["caliber"] = new_cal
-    if new_case_code:
-        override["case_code"] = new_case_code
-    if new_mov:
-        override["movement"] = new_mov
-    if new_mat:
-        override["case_material"] = new_mat
-    if new_dia:
-        override["case_diameter_mm"] = new_dia
-
-    true_tag = accessories.get("true_condition_tag")
-    confidence = audit.get("confidence", "medium")
-    should_resolve = confidence == "high"
-    now_iso = datetime.now(timezone.utc).isoformat()
-
-    with conn:
-        conn.execute(
-            """
-            UPDATE lots
-            SET ai_json = ?,
-                override_json = CASE WHEN ? != '{}' THEN ? ELSE override_json END,
-                ref_number = COALESCE(?, ref_number),
-                caliber = COALESCE(?, caliber),
-                model = COALESCE(?, model),
-                movement = COALESCE(?, movement),
-                case_material = COALESCE(?, case_material),
-                case_diameter_mm = COALESCE(?, case_diameter_mm),
-                condition_tag = CASE WHEN ? IS NOT NULL AND ? IN ('naked', 'box', 'papers', 'fullset') THEN ? ELSE condition_tag END,
-                needs_review = CASE WHEN ? = 1 THEN 0 ELSE needs_review END,
-                review_status = CASE WHEN ? = 1 THEN 'resolved' ELSE review_status END,
-                reviewed_at = CASE WHEN ? = 1 THEN ? ELSE reviewed_at END,
-                updated_at = ?
-            WHERE lot_id = ?
-            """,
-            (
-                json.dumps(ai_data, ensure_ascii=False),
-                json.dumps(override),
-                json.dumps(override),
-                new_ref,
-                new_cal,
-                new_model,
-                new_mov,
-                new_mat,
-                new_dia,
-                true_tag,
-                true_tag,
-                true_tag,
-                1 if should_resolve else 0,
-                1 if should_resolve else 0,
-                1 if should_resolve else 0,
-                now_iso,
-                now_iso,
-                str(lot_id),
-            ),
-        )
-        conn.commit()
+def apply_refinement(
+    conn: sqlite3.Connection, lot_id: str, source_hash: str, ai_data: dict[str, Any],
+) -> None:
+    """Store AI output beside its source snapshot; settlement performs the merge."""
+    upsert_source_refinement(conn, lot_id, source_hash, ai_data, datetime.now(timezone.utc))
 
 
 def run_refinement(
@@ -879,7 +748,11 @@ def _execute_refinement(
 
                 if not results:
                     print(f"  [-] [REFINE] Batch {batch_idx} extraction failed after {elapsed:.1f}s{retry_str}. Queuing {len(lots)} lots for individual fallback. | Quota: {quota_str}", flush=True)
-                    errors.append(f"Batch {batch_idx} extraction failed for lots {batch_ids}")
+                    error = f"Batch {batch_idx} extraction failed"
+                    errors.append(f"{error} for lots {batch_ids}")
+                    if should_update:
+                        for lot in lots:
+                            record_source_refinement_failure(conn, lot["lot_id"], lot["source_hash"], error)
                     failed_lots.update(batch_ids)
                     processed_count += len(lots)
                     continue
@@ -891,6 +764,8 @@ def _execute_refinement(
                 ai_data = result_map.get(lid)
                 if not ai_data:
                     print(f"  [?] Lot {lid}: missing in AI output. Adding to fallback.", flush=True)
+                    if should_update:
+                        record_source_refinement_failure(conn, lid, lot["source_hash"], "missing from AI output")
                     failed_lots.add(lid)
                     continue
 
@@ -910,7 +785,7 @@ def _execute_refinement(
                 print(f"  * Lot {lid} ({ident.get('brand')} {ident.get('model')}): Ref: {ref_display} | Tag: {tag_display}{note} (Conf: {audit.get('confidence')})", flush=True)
 
                 if should_update:
-                    apply_refinement(conn, lid, ai_data)
+                    apply_refinement(conn, lid, lot["source_hash"], ai_data)
                     success_count += 1
                     batch_saved += 1
 
@@ -945,10 +820,14 @@ def _execute_refinement(
                     ident = ai_data.get("identity", {})
                     print(f"  [+] Fallback SUCCEEDED for {fid} ({ident.get('brand')} {ident.get('model')}) via [{app.name}] | Quota: {quota_str}", flush=True)
                     if should_update:
-                        apply_refinement(conn, fid, ai_data)
+                        apply_refinement(conn, fid, single_lot[0]["source_hash"], ai_data)
                         success_count += 1
                 else:
                     print(f"  [-] Fallback FAILED for {fid} via [{app.name}] | Quota: {quota_str}", flush=True)
+                    if should_update:
+                        record_source_refinement_failure(
+                            conn, fid, single_lot[0]["source_hash"], "single-lot fallback failed",
+                        )
                     failed_lots.add(fid)
                 if delay > 0:
                     time.sleep(delay)
@@ -984,7 +863,7 @@ def main() -> None:
     parser.add_argument("--model", type=str, default="gemini-flash", help="Model name (default: gemini-flash)")
     parser.add_argument("--delay", type=float, default=2.0, help="Pause in seconds between batches (default: 2.0)")
     parser.add_argument("--dry-run", action="store_true", help="Print prompt without making network calls")
-    parser.add_argument("--force", action="store_true", help="Re-refine lots even if ai_json already exists")
+    parser.add_argument("--force", action="store_true", help="Re-refine source snapshots even if their hash already has output")
     parser.add_argument("--update-db", action="store_true", help="Explicitly write changes (always on with --all)")
     parser.add_argument("--lock-path", type=Path, default=None, help="Custom path for single-instance lock file")
     args = parser.parse_args()
@@ -994,7 +873,7 @@ def main() -> None:
         sys.exit(1)
 
     should_update = args.update_db or args.all
-    conn = sqlite3.connect(args.db)
+    conn = connect(args.db)
 
     target_ids = [s.strip() for s in args.lot_id.split(",")] if args.lot_id else None
 

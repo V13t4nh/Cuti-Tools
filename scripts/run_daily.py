@@ -124,7 +124,7 @@ def _stop_worker(process: multiprocessing.Process | None, parent_connection: Any
 
 
 def _run_refine(conn: Any, settings: Any) -> list[str]:
-    """Run Gemini LLM refinement for newly settled lots if configured."""
+    """Run Gemini LLM refinement for materialized source snapshots if configured."""
     import sqlite3
 
     if not isinstance(conn, sqlite3.Connection):
@@ -141,22 +141,22 @@ def _run_refine(conn: Any, settings: Any) -> list[str]:
             cookie_path = candidate
 
     if not cookie_path or not Path(cookie_path).is_file():
-        print("[REFINE] Skip: Gemini cookie not configured", flush=True)
+        print("[STAGE-4:REFINE] Skip: Gemini cookie not configured", flush=True)
         return []
 
     try:
         from run_llm_refine import count_unrefined_lots, run_refinement
     except ImportError as exc:
-        print(f"[REFINE] Skip: cannot load refine module ({exc})", flush=True)
+        print(f"[ERROR] [STAGE-4:REFINE] Cannot load refine module: {exc}", flush=True)
         return []
 
     try:
         unrefined = count_unrefined_lots(conn, force=False)
         if unrefined == 0:
-            print("[REFINE] No unrefined lots in database", flush=True)
+            print("[SUMMARY] [STAGE-4:REFINE] 100% lots already refined", flush=True)
             return []
 
-        print(f"[START] Running scheduled Gemini LLM refinement ({unrefined} unrefined lots)...", flush=True)
+        print(f"[STAGE-4:REFINE] Starting Gemini refinement ({unrefined} lots)...", flush=True)
         processed, success, errors = run_refinement(
             conn,
             cookie_path=cookie_path,
@@ -165,13 +165,14 @@ def _run_refine(conn: Any, settings: Any) -> list[str]:
             model="gemini-flash",
             should_update=True,
         )
+        remaining = count_unrefined_lots(conn, force=False)
         print(
-            f"[REFINE] Processed: {processed}, Successfully refined: {success}, "
-            f"Remaining: {count_unrefined_lots(conn, force=False)}", flush=True,
+            f"[SUMMARY] [STAGE-4:REFINE] processed={processed} | success={success} | remaining={remaining}",
+            flush=True,
         )
         return errors
     except Exception as exc:
-        print(f"[ERROR] LLM refinement error: {exc}", file=sys.stderr, flush=True)
+        print(f"[ERROR] [STAGE-4:REFINE] LLM refinement error: {exc}", file=sys.stderr, flush=True)
         return [f"refine error: {exc}"]
 
 
@@ -193,6 +194,7 @@ def run_daily(*, settings: Any = None, now: datetime | None = None, api: Any = N
                 try:
                     producer_ok, producer_errors = _run_producer(conn, settings, rules, now, api=api)
                 except (FetchError, NormalizationError, ScrapeError) as exc:
+                    print(f"[ERROR] [STAGE-1:CRAWL] Producer failure: {exc}", flush=True)
                     producer_ok, producer_errors = False, [f"producer source failure: {exc}"]
                 errors.extend(producer_errors)
                 try:
@@ -202,29 +204,45 @@ def run_daily(*, settings: Any = None, now: datetime | None = None, api: Any = N
                         errors.append("image reconciliation incomplete")
                 except Exception as exc:
                     errors.append(f"image reconciliation failed: {exc}")
-                try:
-                    gallery_limit = getattr(settings, "gallery_reconcile_limit", 20)
-                    gallery_report = reconcile_missing_lot_galleries(conn, settings, now, limit=gallery_limit)
-                    _print_gallery_reconcile(gallery_report)
-                except Exception as exc:
-                    errors.append(f"gallery reconciliation failed: {exc}")
+                if not getattr(settings, "details_enabled", False):
+                    try:
+                        gallery_limit = getattr(settings, "gallery_reconcile_limit", 20)
+                        gallery_report = reconcile_missing_lot_galleries(conn, settings, now, limit=gallery_limit)
+                        _print_gallery_reconcile(gallery_report)
+                    except Exception as exc:
+                        errors.append(f"gallery reconciliation failed: {exc}")
                 if not producer_ok:
                     errors.append("producer incomplete")
+
+                # Stage 4: Gemini LLM Refinement
+                refine_errors = _run_refine(conn, settings)
+                errors.extend(refine_errors)
+
+                # Stage 5: Telegram Image Queue Draining
+                img_state_before = queue_state(conn) or {}
+                pending_before = img_state_before.get("pending", 0)
+                print(f"[STAGE-5:TELEGRAM] Syncing images (queue: {pending_before})", flush=True)
                 worker_error = _wait_for_drain(conn, worker, sleep)
                 if worker_error:
                     errors.append(worker_error)
-                print(f"[IMAGES] {queue_state(conn)}", flush=True)
-                if count_lot_images(conn)["permanent_error"]:
+                img_state_after = queue_state(conn) or {}
+                if img_state_after.get("permanent_error", 0):
                     recovered = recover_permanent_image_failures(conn, settings, now)
                     if recovered:
-                        print(f"[IMAGES] Recovered {recovered} failed image(s) via cache-busting retry", flush=True)
+                        print(f"[STAGE-5:TELEGRAM] Recovered {recovered} failed images via retry", flush=True)
+                    img_state_after = queue_state(conn) or {}
+                up_cnt = img_state_after.get("ready", 0)
+                rem_cnt = img_state_after.get("pending", 0)
+                fail_cnt = img_state_after.get("permanent_error", 0)
+                print(
+                    f"[SUMMARY] [STAGE-5:TELEGRAM] uploaded={up_cnt} | remaining={rem_cnt} | failed={fail_cnt}",
+                    flush=True,
+                )
                 if count_lot_images(conn)["permanent_error"]:
                     errors.append("permanent image failures remain")
                 _stop_worker(worker, parent_connection)
                 worker = None
                 parent_connection = None
-                refine_errors = _run_refine(conn, settings)
-                errors.extend(refine_errors)
     except ProcessLockBusy as exc:
         print(f"[BUSY] {exc}", file=sys.stderr, flush=True)
         return 2

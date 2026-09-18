@@ -1,3 +1,37 @@
+# 2026-09-18 — materialize product detail sau crawl
+
+## 1. Commit hash + ngày đóng gói
+
+- Chưa tạo commit hoặc ZIP. Base worktree giữ thay đổi có trước của người dùng tại `frontend/src/App.tsx`.
+
+## 2. Tầng 1 — verify offline
+
+- Không chạy bộ verify tầng 1 đầy đủ. Đã chạy dry-run LLM trên snapshot nhất quán của DB hiện tại: `.\.venv\Scripts\python.exe scripts\run_llm_refine.py --db var\rehearsal\2026-09-18\llm-refine-dry-run\auctions.db --dry-run --batch-size 3`; exit `0`; raw log `var/rehearsal/2026-09-18/llm-refine-dry-run/run_llm_refine_dry_run.log`.
+- Snapshot migration từ schema 4 sang 6 thành công, nhưng có `0` `lot_source_details` và `0` `lot_refinements`, nên dry-run đọc `0` candidate và không có prompt để đối chiếu.
+
+## 3. Tầng 2 — verify-live
+
+- Không chạy nguồn thật; dry-run không gọi Gemini/crawl và không ghi DB gốc. DB gốc vẫn schema 4, `10,025` lots và `2,247` live-watch sau lượt kiểm tra.
+
+## 4. File thêm / sửa / xoá, kèm LOC sau sửa
+
+- Thêm `src/cuti/storage/source_details.py`, `src/cuti/storage/refinements.py` và `src/cuti/pipeline/enrichment.py`.
+- Sửa schema/migration, storage facade, crawl/settlement/refinement pipeline, gallery priority và cấu hình detail.
+- Giữ `run_tui.bat` làm launcher duy nhất ở root; chuyển `run_daily.bat`, `run_dev.bat`, `run_public.bat` sang `launchers/` và đổi chúng sang root path tuyệt đối theo vị trí launcher.
+- Schema đổi: thêm bảng `lot_source_details`, `lot_refinements`; `SCHEMA_VERSION` từ 4 lên 6. Không thêm dependency.
+
+## 5. Từng task được giao
+
+- Sau `watch_live`, khi `CUTI_DETAILS_ENABLED=true`, materialize theo batch các lot chưa có source detail: một HTML detail page được parse thành specs/description và tất cả URL gallery được lưu vào `lot_images`.
+- Settlement đọc snapshot source detail trước; chỉ fetch detail lại khi snapshot chưa có. Nếu settlement đã fetch HTML thì cũng lưu gallery như đường dự phòng.
+- Reconcile gallery cũ ưu tiên lot mới thay vì `lot_id` tăng dần. LLM refine của daily run đọc mọi source snapshot đã materialize, gồm cả lot còn mở; output bị khóa theo `source_hash`.
+- Settlement chỉ nhận LLM output có `source_hash` đúng bằng snapshot hiện tại; output AI là nguồn bổ trợ có precedence thấp hơn source details, trừ `true_condition_tag` mà LLM đã suy ra từ chính snapshot đó. Lỗi refine được lưu theo hash để retry, còn dry-run không ghi DB.
+
+## 6. Phản biện spec, câu hỏi, thứ cần xin duyệt
+
+- `lot_source_details` lưu parsed source data, hash và trạng thái retry; không lưu raw HTML hoặc tải file ảnh. Detail fetch bị giới hạn bởi `CUTI_GALLERY_RECONCILE_LIMIT` hiện có và delay/retry detail hiện có.
+- Không chạy test/verify theo chỉ đạo trong prompt này; chưa tuyên bố đạt nghiệm thu.
+
 # Vòng 15 — delta sau phản biện, chưa đủ điều kiện đóng zip
 
 ## 1. Commit hash + ngày đóng gói

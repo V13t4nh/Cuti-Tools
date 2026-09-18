@@ -14,9 +14,8 @@ from pathlib import Path
 from ..errors import StorageError
 from .schema_ddl import SCHEMA_SQL
 from .schema_migration import ensure_fts, ensure_media_queue
-# Queue columns are additive to the established v4 schema and remain
-# compatible with existing v4 databases during reopen.
-SCHEMA_VERSION = 4
+# Source-detail materialization and source-bound refinement are additive.
+SCHEMA_VERSION = 6
 
 YES = "__YES__"
 NO = "__NO__"
@@ -39,6 +38,9 @@ LOT_COLUMNS_AFTER_V1: tuple[tuple[str, str], ...] = (
     ("review_status", "TEXT NOT NULL DEFAULT 'pending' CHECK (review_status IN ('pending', 'resolved', 'ignored'))"),
     ("reviewed_at", "TEXT"),
     ("override_json", "TEXT"),
+    # SQLite ALTER TABLE ADD COLUMN requires a literal default for NOT NULL columns.
+    # Empty string is valid ISO-8601-adjacent; upsert_lots overwrites it on next write.
+    ("updated_at", "TEXT NOT NULL DEFAULT ''"),
 )
 
 def utcnow(now: datetime) -> str:
@@ -128,8 +130,7 @@ def migrate(conn: sqlite3.Connection) -> None:
         conn.execute("UPDATE schema_meta SET value = ? WHERE key = 'version'", (str(SCHEMA_VERSION),))
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     elif current == SCHEMA_VERSION:
-        # v4 databases created before the user-facing catalog tables existed
-        # receive the additive DDL on reopen; all statements are idempotent.
+        # Existing databases receive idempotent additive DDL on reopen.
         conn.executescript(SCHEMA_SQL)
         ensure_media_queue(conn)
     elif current > SCHEMA_VERSION:

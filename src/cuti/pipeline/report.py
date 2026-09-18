@@ -16,8 +16,10 @@ from ..scrapers import catawiki_api
 from .settlement import persist, settle
 from ..storage import (LiveWatchRow, count_live_watch, fetch_live_watch_due,
                        fetch_lots_for_source_check, mark_source_availability,
-                       upsert_live_watch, upsert_live_watch_with_images)
+                       fetch_current_source_refinements, fetch_source_details, upsert_live_watch,
+                       upsert_live_watch_with_images)
 from .details import build_lot_url, fetch_lot_page
+from .enrichment import materialize_missing_source_details
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +31,9 @@ class WatchLiveReport:
     lots_refreshed: int
     windows_unknown: int
     requests_made: int
+    details_candidates: int = 0
+    details_materialized: int = 0
+    detail_failures: tuple[str, ...] = ()
 
 @dataclass(frozen=True, slots=True)
 class SettleReport:
@@ -70,88 +75,90 @@ def _catawiki_client(settings: Settings, api: catawiki_api.CatawikiApi | None = 
 
 def watch_live(conn: sqlite3.Connection, settings: Settings, now: datetime, *, api: catawiki_api.CatawikiApi | None = None) -> WatchLiveReport:
     """Phase 1: record every lot that is open right now, with its close date."""
+    print(f"[STAGE-1:CRAWL] Starting crawl ({', '.join(settings.catawiki_queries)})...", flush=True)
     client = _catawiki_client(settings, api); refs: dict[str, catawiki_api.LotRef] = {}; pages = 0
     for query in settings.catawiki_queries:
-        previous_page_ids: tuple[str, ...] | None = None
-        for page_number in range(1, settings.catawiki_search_max_pages + 1):
-            page = client.search(query, page_number); pages += 1
-            if not page.lots: break
+        prev_ids: tuple[str, ...] | None = None
+        for page_num in range(1, settings.catawiki_search_max_pages + 1):
+            page = client.search(query, page_num); pages += 1
+            if not page.lots:
+                print(f"[PROGRESS:CRAWL] query='{query}' page={pages} seen={len(refs)} status=done", flush=True)
+                break
             page_ids = tuple(ref.lot_id for ref in page.lots)
             for ref in page.lots:
-                previous = refs.get(ref.lot_id)
-                if previous is not None and previous.image_url != ref.image_url:
+                prev = refs.get(ref.lot_id)
+                if prev is not None and prev.image_url != ref.image_url:
                     raise ScrapeError(f"lot {ref.lot_id}: conflicting cover URLs in one crawl")
                 refs.setdefault(ref.lot_id, ref)
-            if page_ids == previous_page_ids: break
-            previous_page_ids = page_ids
+            if page_ids == prev_ids:
+                print(f"[PROGRESS:CRAWL] query='{query}' page={pages} seen={len(refs)} status=dedup_stopped", flush=True)
+                break
+            print(f"[PROGRESS:CRAWL] query='{query}' page={page_num} seen={len(refs)}", flush=True)
+            prev_ids = page_ids
+    print(f"[PROGRESS:CRAWL] Checking live states for {len(refs)} lots...", flush=True)
     windows: dict[str, date] = {}
     for batch in catawiki_api.chunks(list(refs), settings.catawiki_batch_size):
         for lot_id, state in client.live_states(batch).items():
             if not state.closed: windows[lot_id] = state.ended_at
-    rows = [LiveWatchRow(lot_id=lot_id, source=catawiki_api.SOURCE_NAME, title=ref.title, subtitle=ref.subtitle,
-                         url=ref.url, bidding_end_at=windows.get(lot_id)) for lot_id, ref in refs.items()]
-    image_urls = {lot_id: ref.image_url for lot_id, ref in refs.items() if ref.image_url}
+    rows = [LiveWatchRow(lot_id=lid, source=catawiki_api.SOURCE_NAME, title=r.title, subtitle=r.subtitle,
+                         url=r.url, bidding_end_at=windows.get(lid)) for lid, r in refs.items()]
+    image_urls = {lid: r.image_url for lid, r in refs.items() if r.image_url}
     tracked, refreshed = upsert_live_watch_with_images(conn, rows, image_urls, now)
+    from ..storage import count_rows
+    queue_total = count_rows(conn, "live_watch")
+    print(f"[SUMMARY] [STAGE-1:CRAWL] pages={pages} | seen={len(rows)} | tracked={tracked} | refreshed={refreshed} | queue_total={queue_total}", flush=True)
+    detail_report = None
+    if getattr(settings, "details_enabled", False):
+        limit = getattr(settings, "gallery_reconcile_limit", 20)
+        print(f"[STAGE-2:DETAILS] Materializing details (limit={limit})...", flush=True)
+        detail_report = materialize_missing_source_details(conn, settings, now, limit=limit)
+        print(f"[SUMMARY] [STAGE-2:DETAILS] target={detail_report.candidates} | success={detail_report.materialized} | images_added={detail_report.images_stored} | failed={len(detail_report.failures)}", flush=True)
     return WatchLiveReport(queries=settings.catawiki_queries, pages_fetched=pages, lots_seen=len(rows),
                            lots_tracked=tracked, lots_refreshed=refreshed,
-                           windows_unknown=sum(row.bidding_end_at is None for row in rows), requests_made=client.requests_made)
+                           windows_unknown=sum(row.bidding_end_at is None for row in rows), requests_made=client.requests_made,
+                           details_candidates=detail_report.candidates if detail_report else 0,
+                           details_materialized=detail_report.materialized if detail_report else 0,
+                           detail_failures=detail_report.failures if detail_report else ())
 
 
 def settle_lots(
-    conn: sqlite3.Connection,
-    rules: Rules,
-    settings: Settings,
-    today: date,
-    now: datetime,
-    *,
-    api: catawiki_api.CatawikiApi | None = None,
-    record_unclassified: bool = False,
-    max_rounds: int = 1,
-    on_progress: Callable[[int, int, str], None] | None = None,
+    conn: sqlite3.Connection, rules: Rules, settings: Settings, today: date, now: datetime,
+    *, api: catawiki_api.CatawikiApi | None = None, record_unclassified: bool = False,
+    max_rounds: int = 1, on_progress: Callable[[int, int, str], None] | None = None,
 ) -> SettleReport:
     """Phase 2: read the hammer price of every tracked lot that has closed."""
+    print("[STAGE-3:SETTLE] Settling due lots...", flush=True)
     client = _catawiki_client(settings, api)
-    tot_candidates = tot_sold = tot_unsold = tot_still_open = tot_vanished = 0
-    tot_unclass = tot_details_failed = tot_written = 0
-    all_errors: list[str] = []
-    round_count = 0
+    tot_cands = tot_sold = tot_unsold = tot_open = tot_vanished = tot_unclass = tot_failed = tot_written = 0
+    all_errors: list[str] = []; round_count = 0
     while round_count < max(1, max_rounds):
         round_count += 1
         candidates = fetch_live_watch_due(conn, until=today, limit=settings.settle_max_lots)
-        if not candidates:
-            break
-        print(f"[SETTLE] Round {round_count}: Processing {len(candidates)} overdue lots...", flush=True)
-
+        if not candidates: break
+        print(f"[STAGE-3:SETTLE] Round {round_count}: Evaluating {len(candidates)} lots...", flush=True)
         def _default_progress(idx: int, total: int, lot_id: str) -> None:
-            if idx == 1 or idx % 10 == 0 or idx == total:
-                print(f"  [SETTLE PROGRESS] Round {round_count}: Lot {idx}/{total} (lot={lot_id})", flush=True)
-
+            print(f"[PROGRESS:SETTLE] round={round_count} current={idx} total={total} lot={lot_id}", flush=True)
         progress_cb = on_progress or _default_progress
-        details = _lot_page_fetcher(candidates, settings) if settings.details_enabled else None
+        details = _lot_page_fetcher(candidates, settings) if getattr(settings, "details_enabled", False) else None
+        c_ids = [c.lot_id for c in candidates]
+        cached_d = fetch_source_details(conn, c_ids); cached_r = fetch_current_source_refinements(conn, c_ids)
         settlement = settle(
-            client, rules, settings, candidates,
-            fetch_details=details, record_unclassified=record_unclassified,
-            on_progress=progress_cb,
+            client, rules, settings, candidates, fetch_details=details,
+            record_unclassified=record_unclassified, source_details=cached_d,
+            source_refinements=cached_r, on_progress=progress_cb,
         )
         written = persist(conn, settlement, now)
-        print(
-            f"[SETTLE ROUND {round_count}] Finished {len(candidates)} lots | Written: {written} | "
-            f"Sold: {settlement.sold} | Unsold: {settlement.unsold} | Open: {settlement.still_open}",
-            flush=True,
-        )
-        tot_candidates += len(candidates)
-        tot_sold += settlement.sold; tot_unsold += settlement.unsold; tot_still_open += settlement.still_open
-        tot_vanished += settlement.vanished; tot_unclass += settlement.unclassified
-        tot_details_failed += settlement.details_failed; tot_written += written
+        tot_cands += len(candidates); tot_sold += settlement.sold; tot_unsold += settlement.unsold
+        tot_open += settlement.still_open; tot_vanished += settlement.vanished
+        tot_unclass += settlement.unclassified; tot_failed += settlement.details_failed; tot_written += written
         all_errors.extend(settlement.errors)
-        if not settlement.finished and not written:
-            break
-
+        if not settlement.finished and not written: break
+    print(f"[SUMMARY] [STAGE-3:SETTLE] candidates={tot_cands} | sold={tot_sold} | unsold={tot_unsold} | open={tot_open} | written={tot_written}", flush=True)
     return SettleReport(
-        candidates=tot_candidates, sold=tot_sold, unsold=tot_unsold, still_open=tot_still_open,
-        vanished=tot_vanished, unclassified=tot_unclass, details_failed=tot_details_failed,
-        errors=tuple(all_errors), lots_written=tot_written, queue_remaining=count_live_watch(conn),
-        requests_made=client.requests_made,
+        candidates=tot_cands, sold=tot_sold, unsold=tot_unsold, still_open=tot_open,
+        vanished=tot_vanished, unclassified=tot_unclass, details_failed=tot_failed,
+        errors=tuple(all_errors), lots_written=tot_written,
+        queue_remaining=count_live_watch(conn), requests_made=client.requests_made,
     )
 
 

@@ -10,17 +10,19 @@ def find_lots_missing_gallery(conn: sqlite3.Connection, limit: int | None = None
     limit_clause = f"LIMIT {int(limit)}" if limit is not None and limit > 0 else ""
     query = f"""
         SELECT lot_id, source, url FROM (
-            SELECT lot_id, source, url FROM live_watch
+            SELECT lot_id, source, url,
+                   coalesce(bidding_end_at, last_seen_at, '') AS time_sort FROM live_watch
             WHERE NOT EXISTS (
                 SELECT 1 FROM lot_images WHERE lot_images.lot_id = live_watch.lot_id AND idx >= 1
             )
             UNION
-            SELECT lot_id, source, url FROM lots
+            SELECT lot_id, source, url,
+                   coalesce(ended_at, updated_at, '') AS time_sort FROM lots
             WHERE NOT EXISTS (
                 SELECT 1 FROM lot_images WHERE lot_images.lot_id = lots.lot_id AND idx >= 1
             )
         )
-        ORDER BY lot_id
+        ORDER BY time_sort DESC, lot_id DESC
         {limit_clause}
     """
     rows = conn.execute(query).fetchall()

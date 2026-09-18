@@ -1,13 +1,14 @@
 @echo off
 setlocal
-cd /d "%~dp0"
+set "PROJECT_ROOT=%~dp0.."
+cd /d "%PROJECT_ROOT%"
 
 title CUTI Daily Pipeline
 
 echo ======================================================================
-echo  CHAY DAILY PIPELINE (Crawl, Settle, Images, Gemini Refine)
+echo  CHAY DAILY PIPELINE (Crawl, Detail, Gallery, Settle, Images, Refine)
 echo ======================================================================
-call .\.venv\Scripts\python.exe scripts\run_daily.py
+call "%PROJECT_ROOT%\.venv\Scripts\python.exe" "%PROJECT_ROOT%\scripts\run_daily.py"
 
 echo.
 echo ======================================================================

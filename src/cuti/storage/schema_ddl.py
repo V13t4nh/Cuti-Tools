@@ -86,6 +86,29 @@ CREATE TABLE IF NOT EXISTS live_watch (
     last_seen_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_live_watch_end ON live_watch(bidding_end_at);
+CREATE TABLE IF NOT EXISTS lot_source_details (
+    lot_id TEXT PRIMARY KEY,
+    source TEXT NOT NULL,
+    specs_json TEXT NOT NULL,
+    description TEXT,
+    content_hash TEXT NOT NULL,
+    fetched_at TEXT,
+    state TEXT NOT NULL CHECK (state IN ('ready', 'retryable_error', 'permanent_error')),
+    last_error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_lot_source_details_state
+    ON lot_source_details(state, fetched_at, lot_id);
+
+CREATE TABLE IF NOT EXISTS lot_refinements (
+    lot_id TEXT PRIMARY KEY,
+    source_hash TEXT NOT NULL,
+    ai_json TEXT NOT NULL,
+    refined_at TEXT,
+    state TEXT NOT NULL CHECK (state IN ('ready', 'retryable_error', 'permanent_error')),
+    last_error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_lot_refinements_state
+    ON lot_refinements(state, source_hash, refined_at, lot_id);
 
 CREATE TABLE IF NOT EXISTS deals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

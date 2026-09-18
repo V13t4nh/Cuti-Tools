@@ -256,7 +256,48 @@ class AuctionSettledApiTests(unittest.TestCase):
         self.assertFalse(detail_lot["source_available"])
         self.assertEqual(detail_lot["review_status"], "ignored")
 
+    def test_query_open_lot_with_refinement_enrichment(self) -> None:
+        import json
+        self.conn.execute(
+            """
+            INSERT INTO live_watch (lot_id, source, title, subtitle, url, bidding_end_at, first_seen_at, last_seen_at)
+            VALUES ('live-enriched-01', 'catawiki', 'Tecnotempo Automatic Chronograph', 'TelemetriX', 'https://example.com/live', '2099-01-01T00:00:00Z', '2026-09-18T00:00:00Z', '2026-09-18T00:00:00Z')
+            """
+        )
+        self.conn.execute(
+            """
+            INSERT INTO lot_refinements (lot_id, source_hash, ai_json, refined_at, state, last_error)
+            VALUES ('live-enriched-01', 'hash123', ?, '2026-09-18T12:00:00Z', 'ready', NULL)
+            """,
+            (json.dumps({
+                "brand": "Tecnotempo",
+                "model": "TelemetriX",
+                "movement": "auto",
+                "case_material": "steel",
+                "case_diameter_mm": 40,
+                "accessories": {"true_condition_tag": "fullset"},
+            }),)
+        )
+        self.conn.commit()
+
+        status, payload = get(self.conn, self.settings, "/api/auction-lots", {"status": ["open"], "q": ["Tecnotempo"]})
+        self.assertEqual(status, 200)
+        self.assertEqual(len(payload["lots"]), 1)
+        lot = payload["lots"][0]
+        self.assertEqual(lot["lot_id"], "live-enriched-01")
+        self.assertEqual(lot["status"], "open")
+        self.assertEqual(lot["condition_tag"], "fullset")
+        self.assertEqual(lot["movement"], "auto")
+        self.assertEqual(lot["case_material"], "steel")
+        self.assertEqual(lot["case_diameter_mm"], 40)
+
+        status, detail = get(self.conn, self.settings, "/api/auction-lots/live-enriched-01", {})
+        self.assertEqual(status, 200)
+        self.assertEqual(detail["lot"]["condition_tag"], "fullset")
+        self.assertEqual(detail["lot"]["movement"], "auto")
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
