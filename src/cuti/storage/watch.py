@@ -93,7 +93,11 @@ def upsert_live_watch_with_images(
         for row in rows:
             image_url = image_urls.get(row.lot_id)
             if image_url:
-                upsert_lot_image(conn, lot_id=row.lot_id, idx=0, source_url=image_url)
+                has_cover = conn.execute(
+                    "SELECT 1 FROM lot_images WHERE lot_id = ? AND idx = 0", (row.lot_id,)
+                ).fetchone()
+                if not has_cover:
+                    upsert_lot_image(conn, lot_id=row.lot_id, idx=0, source_url=image_url)
     return result
 
 

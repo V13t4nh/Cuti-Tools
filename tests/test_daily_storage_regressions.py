@@ -166,6 +166,38 @@ class DailyStorageRegressionTests(unittest.TestCase):
         )
         self.assertTrue(queue_is_drained(self.conn))
 
+    def test_upsert_live_watch_with_images_preserves_existing_cover_on_conflict(self) -> None:
+        from cuti.storage.watch import upsert_live_watch_with_images
+
+        row = LiveWatchRow(
+            "conflict-cover-lot",
+            "catawiki",
+            "Title",
+            None,
+            "https://source.invalid/lot",
+            None,
+        )
+        upsert_live_watch_with_images(
+            self.conn,
+            [row],
+            {"conflict-cover-lot": "https://source.invalid/images/cover-1.jpg"},
+            NOW,
+        )
+        image = fetch_lot_image(self.conn, "conflict-cover-lot")
+        self.assertIsNotNone(image)
+        self.assertEqual(image["source_url"], "https://source.invalid/images/cover-1.jpg")
+
+        # Second crawl discovers a changed cover URL for the same lot; Option A preserves existing cover without conflict
+        upsert_live_watch_with_images(
+            self.conn,
+            [row],
+            {"conflict-cover-lot": "https://source.invalid/images/cover-2.jpg"},
+            NOW,
+        )
+        image_after = fetch_lot_image(self.conn, "conflict-cover-lot")
+        self.assertIsNotNone(image_after)
+        self.assertEqual(image_after["source_url"], "https://source.invalid/images/cover-1.jpg")
+
 
 if __name__ == "__main__":
     unittest.main()

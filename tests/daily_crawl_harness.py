@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from contextlib import contextmanager
 import socket
+import ssl
 from typing import Any, Callable
 
 
