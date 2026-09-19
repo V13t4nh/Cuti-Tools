@@ -458,17 +458,20 @@ export function AuctionLotModal({ lot, lots, onClose, onAssessLot, onSelectLot }
 
                 <div className="detail-sheet-meta-footer">
                   {lot.bids_count != null && (
-                    <span>
-                      Lượt đặt giá: <strong>{lot.bids_count}</strong>
+                    <span className="meta-footer-item meta-footer-bids" title="Lượt đặt giá" aria-label={`Lượt đặt giá: ${lot.bids_count}`}>
+                      <AppIcon name="gavel" />
+                      <strong>{lot.bids_count}</strong>
                     </span>
                   )}
                   {lot.hearts != null && (
-                    <span>
-                      Quan tâm: <strong>{lot.hearts}</strong>
+                    <span className="meta-footer-item meta-footer-hearts" title="Lượt quan tâm" aria-label={`Lượt quan tâm: ${lot.hearts}`}>
+                      <AppIcon name="heart" />
+                      <strong>{lot.hearts}</strong>
                     </span>
                   )}
-                  <span>
-                    Sàn: <strong>{lot.source || 'Catawiki'}</strong>
+                  <span className="meta-footer-item meta-footer-source" title="Sàn đấu giá" aria-label={`Sàn đấu giá: ${lot.source || 'Catawiki'}`}>
+                    <AppIcon name="platform" />
+                    <strong>{lot.source || 'Catawiki'}</strong>
                   </span>
                 </div>
               </div>

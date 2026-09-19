@@ -24,6 +24,8 @@ def model_key(values: Mapping[str, Any], title: str) -> tuple[str, int]:
     )
     for tier, names in candidates:
         if prefix and all(values.get(name) is not None for name in names):
-            parts = [prefix, *(normalize_text(str(values[name])) for name in names)]
-            return "|".join(parts), tier
-    return "|".join(part for part in (prefix, _slug(title)) if part), 5
+            ident = "-".join(normalize_text(str(values[name])) for name in names)
+            return f"{prefix}:{ident}", tier
+    slug = _slug(title)
+    return f"{prefix}:{slug}" if prefix else slug, 5
+

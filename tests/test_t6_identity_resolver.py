@@ -61,28 +61,28 @@ class IdentityAndModelKeyTests(unittest.TestCase):
             (
                 "Omega vintage watch",
                 {"Brand": "Omega", "Caliber": "503", "Case code": "2849"},
-                "omega|503|2849",
+                "omega:503-2849",
                 1,
             ),
             (
                 "Omega vintage watch",
                 {"Brand": "Omega", "Case code": "2849"},
-                "omega|2849",
+                "omega:2849",
                 2,
             ),
             (
                 "Omega vintage 2849 watch",
                 {"Brand": "Omega", "Reference number": "2849"},
-                "omega|2849",
+                "omega:2849",
                 3,
             ),
             (
                 "Omega Seamaster watch",
                 {"Brand": "Omega", "Model": "Seamaster", "Case diameter": "34 mm"},
-                "omega|seamaster|34",
+                "omega:seamaster-34",
                 4,
             ),
-            ("Omega Seamaster watch", {"Brand": "Omega"}, "omega|omega-seamaster-watch", 5),
+            ("Omega Seamaster watch", {"Brand": "Omega"}, "omega:omega-seamaster-watch", 5),
         )
         for title, details, expected_key, expected_tier in cases:
             with self.subTest(expected_tier=expected_tier):

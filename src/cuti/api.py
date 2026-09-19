@@ -75,7 +75,15 @@ def _liquidity(conn, settings: Settings, params: dict[str, list[str]]) -> dict[s
     rows.extend(_liquidity_row(item, insufficient=True) for item in report.excluded_groups); [row.update({"window_start": report.window_start, "window_end": report.window_end}) for row in rows]
     brand = params.get("brand", [""])[0].strip().lower()
     status = params.get("status", ["all"])[0].strip().lower()
-    if brand: rows = [row for row in rows if brand in row["brand"].lower()]
+    if brand:
+        exact_rows = [row for row in rows if brand in row["brand"].lower()]
+        if not exact_rows:
+            import difflib
+            all_brands = {row["brand"].lower(): row["brand"] for row in rows}
+            matches = difflib.get_close_matches(brand, list(all_brands.keys()), n=1, cutoff=0.7)
+            rows = [row for row in rows if matches[0] in row["brand"].lower()] if matches else []
+        else:
+            rows = exact_rows
     if status != "all": rows = [row for row in rows if ("stop_buying" if row["stop_buying"] else row["status"] or "insufficient_data") == status]
     rows.sort(key=lambda row: (-(row["index"] if row["index"] is not None else -1), row["brand"], row["form"]))
     offset, pagination = _pagination(params, len(rows))

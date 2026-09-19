@@ -40,7 +40,7 @@
     "self-winding", "solar", "kinetic", "spring-drive"
   ],
   "model_token_limit": 2,
-  "reference_pattern": "(?:[a-z]{1,4}[0-9]+(?:[.\\-][a-z0-9]+)+|[a-z]{1,4}[0-9]{3,}[a-z0-9.\\-]*|[0-9]{4,}[a-z0-9.\\-]*|[0-9]{2,}(?:\\.[0-9]{2,})+)",
+  "reference_pattern": "(?:[a-z]{1,4}[0-9]+(?:[.\\-][a-z0-9]+)+|[a-z]{1,4}[0-9]{3,}[a-z0-9.\\-]*|[0-9]{4,}[a-z0-9.\\-]*|[0-9]{2,}(?:\\.[0-9]{2,})+|[a-z0-9]{4}-[a-z0-9]{4})",
   "identity": {
     "split_patterns": {
       "seiko": "(?P<caliber>[A-Z0-9]{4})-(?P<case_code>[A-Z0-9]{4})",

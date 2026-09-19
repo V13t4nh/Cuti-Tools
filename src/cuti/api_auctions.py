@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 from datetime import date
+from .search_query import build_search_conditions, count_with_typo_fallback, get_watch_vocab, normalize_search_query, split_compound
 from .storage import fetch_lot_image
 from .telegram_media import cover_metadata
 
@@ -100,28 +101,23 @@ def list_auctions(conn, settings, params, pagination_fn, freshness_json_fn, fres
     qualities_raw = params.get("qualities", [""])[0].strip().lower()
     movements_raw = params.get("movements", [""])[0].strip().lower()
     materials_raw = params.get("materials", [""])[0].strip().lower()
+    has_meta_filter = bool(conditions_raw or qualities_raw or movements_raw or materials_raw)
+    target_table = "lots" if (wanted == "settled" or (wanted == "all" and has_meta_filter)) else "live_watch"
     where, args = [], []
+    vocab, vocab_list = get_watch_vocab(conn)
+    query_where, query_args = [], []
+    words: list[str] = []
     if query:
-        raw_tokens = [t.lstrip("#").strip(".-") for t in query.split() if t.lstrip("#").strip(".-")]
-        words: list[str] = []
+        raw_tokens = [t.lstrip("#").strip(".-") for t in normalize_search_query(query).split() if t.lstrip("#").strip(".-")]
         for t in raw_tokens:
             parts = [p for p in t.split("-") if p]
             if len(parts) > 1 and all(p.isalpha() for p in parts):
                 words.extend(parts)
             else:
-                words.append(t)
-        for w in words:
-            clean = w.replace("-", "")
-            if clean != w and len(clean) >= 3:
-                where.append("(instr(lower(coalesce(lot_id, '')), ?) > 0 OR instr(lower(coalesce(title, '')), ?) > 0 OR instr(replace(lower(coalesce(title, '')), '-', ''), ?) > 0 OR instr(lower(coalesce(subtitle, '')), ?) > 0)")
-                args.extend([w, w, clean, w])
-            elif len(w) >= 3 and any(c.isdigit() for c in w) and any(c.isalpha() for c in w):
-                where.append("(instr(lower(coalesce(lot_id, '')), ?) > 0 OR instr(lower(coalesce(title, '')), ?) > 0 OR instr(replace(lower(coalesce(title, '')), '-', ''), ?) > 0 OR instr(lower(coalesce(subtitle, '')), ?) > 0)")
-                args.extend([w, w, w, w])
-            else:
-                where.append("(instr(lower(coalesce(lot_id, '')), ?) > 0 OR instr(lower(coalesce(title, '')), ?) > 0 OR instr(lower(coalesce(subtitle, '')), ?) > 0)")
-                args.extend([w] * 3)
-    has_meta_filter = bool(conditions_raw or qualities_raw or movements_raw or materials_raw)
+                words.extend(split_compound(t, vocab))
+        query_where, query_args = build_search_conditions(words, target_table)
+        where.extend(query_where)
+        args.extend(query_args)
     if wanted == "settled" or (wanted == "all" and has_meta_filter):
         if conditions_raw:
             valid_conds = {"naked", "box", "papers", "fullset"}
@@ -163,8 +159,7 @@ def list_auctions(conn, settings, params, pagination_fn, freshness_json_fn, fres
                         mat_conds.append("(case_material = 'titanium' OR instr(lower(coalesce(specs_json, '')), 'titanium') > 0)")
                 if mat_conds:
                     where.append(f"({' OR '.join(mat_conds)})")
-        clause = f" WHERE {' AND '.join(where)}" if where else ""
-        total = conn.execute(f"SELECT COUNT(*) FROM lots{clause}", args).fetchone()[0]
+        total, clause, args = count_with_typo_fallback(conn, "lots", where, args, words, vocab, vocab_list, query_where, query_args)
         offset, pagination = pagination_fn(params, total)
         rows = conn.execute(f"SELECT lot_id, source, title, subtitle, url, ended_at, hammer_eur, sold, bids_count, hearts, needs_review, source_available, review_status, specs_json, condition_tag, ai_json, movement, case_material, case_diameter_mm FROM lots{clause} ORDER BY ended_at DESC, lot_id LIMIT ? OFFSET ?", [*args, pagination["page_size"], offset]).fetchall()
         lots = []
@@ -193,8 +188,7 @@ def list_auctions(conn, settings, params, pagination_fn, freshness_json_fn, fres
     if wanted == "open": where.append(state_sql); args.append(today)
     elif wanted == "waiting": where.append(f"NOT ({state_sql})"); args.append(today)
     elif wanted != "all": where.append("0")
-    clause = f" WHERE {' AND '.join(where)}" if where else ""
-    total = conn.execute(f"SELECT COUNT(*) FROM live_watch{clause}", args).fetchone()[0]
+    total, clause, args = count_with_typo_fallback(conn, "live_watch", where, args, words, vocab, vocab_list, query_where, query_args)
     offset, pagination = pagination_fn(params, total)
     q_live = f"SELECT w.lot_id, w.source, w.title, w.subtitle, w.url, w.bidding_end_at, r.ai_json, d.specs_json FROM (SELECT * FROM live_watch{clause} ORDER BY bidding_end_at, lot_id LIMIT ? OFFSET ?) w LEFT JOIN lot_refinements r ON r.lot_id = w.lot_id AND r.state = 'ready' LEFT JOIN lot_source_details d ON d.lot_id = w.lot_id AND d.state = 'ready'"
     rows = conn.execute(q_live, [*args, pagination["page_size"], offset]).fetchall()

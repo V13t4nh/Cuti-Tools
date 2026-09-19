@@ -296,6 +296,118 @@ class AuctionSettledApiTests(unittest.TestCase):
         self.assertEqual(detail["lot"]["condition_tag"], "fullset")
         self.assertEqual(detail["lot"]["movement"], "auto")
 
+    def test_search_compound_words_and_typo_fallback(self) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO lots (lot_id, source, title, brand, model, model_key, condition_tag, form, hearts, sold, hammer_eur, opened_at, ended_at, url, subtitle, bids_count, updated_at)
+            VALUES
+            ('lot-airking', 'catawiki', 'Rolex - Oyster Perpetual Air-King Precision', 'rolex', 'Air-King', 'rolex:air-king', 'naked', 'round', 15, 1, 2800, '2026-08-01', '2026-08-10', 'https://ex.com/ak', 'Automatic - Steel', 12, '2026-08-10T00:00:00Z'),
+            ('lot-king-seiko', 'catawiki', 'Seiko - King Seiko Hi-Beat 5626', 'seiko', 'King Seiko', 'seiko:king-seiko', 'box', 'round', 25, 1, 450, '2026-08-01', '2026-08-10', 'https://ex.com/ks', 'Automatic - Steel', 20, '2026-08-10T00:00:00Z'),
+            ('lot-seiko-chrono', 'catawiki', 'Seiko - Chronograph Quartz 8T63', 'seiko', 'Chronograph', 'seiko:chronograph', 'box', 'round', 18, 1, 150, '2026-08-01', '2026-08-10', 'https://ex.com/sc', 'Quartz - Steel', 15, '2026-08-10T00:00:00Z'),
+            ('lot-talking', 'catawiki', 'Seiko Talking Watch Vintage', 'seiko', 'Talking Watch', 'seiko:talking-watch', 'naked', 'round', 5, 1, 60, '2026-08-01', '2026-08-10', 'https://ex.com/tw', 'Quartz - Plastic', 4, '2026-08-10T00:00:00Z')
+            """
+        )
+        self.conn.commit()
+
+        # 1. Compound search: 'airking' should match 'Air-King'
+        status, payload = get(self.conn, self.settings, "/api/auction-lots", {"status": ["settled"], "q": ["airking"]})
+        self.assertEqual(status, 200)
+        lot_ids = [l["lot_id"] for l in payload["lots"]]
+        self.assertIn("lot-airking", lot_ids)
+
+        # 2. Hyphen search: 'air-king' should also match
+        status, payload = get(self.conn, self.settings, "/api/auction-lots", {"status": ["settled"], "q": ["air-king"]})
+        self.assertEqual(status, 200)
+        lot_ids = [l["lot_id"] for l in payload["lots"]]
+        self.assertIn("lot-airking", lot_ids)
+
+        # 3. Typo fallback: 'rolexx' should match 'rolex'
+        status, payload = get(self.conn, self.settings, "/api/auction-lots", {"status": ["settled"], "q": ["rolexx"]})
+        self.assertEqual(status, 200)
+        lot_ids = [l["lot_id"] for l in payload["lots"]]
+        self.assertIn("lot-airking", lot_ids)
+
+        # 4. Typo fallback: 'seikoo' should match 'seiko'
+        status, payload = get(self.conn, self.settings, "/api/auction-lots", {"status": ["settled"], "q": ["seikoo"]})
+        self.assertEqual(status, 200)
+        lot_ids = [l["lot_id"] for l in payload["lots"]]
+        self.assertIn("lot-king-seiko", lot_ids)
+        self.assertIn("settled-001", lot_ids)
+
+        # 5. Word boundary query: 'king' matches King Seiko and Air-King, but NOT Talking Watch
+        status, payload = get(self.conn, self.settings, "/api/auction-lots", {"status": ["settled"], "q": ["king"]})
+        self.assertEqual(status, 200)
+        lot_ids = [l["lot_id"] for l in payload["lots"]]
+        self.assertIn("lot-king-seiko", lot_ids)
+        self.assertIn("lot-airking", lot_ids)
+        self.assertNotIn("lot-talking", lot_ids)
+
+        # 6. Intact vocab query: 'Seiko Chronograph' should not split 'chronograph' into 'chrono' + 'graph'
+        status, payload = get(self.conn, self.settings, "/api/auction-lots", {"status": ["settled"], "q": ["Seiko Chronograph"]})
+        self.assertEqual(status, 200)
+        lot_ids = [l["lot_id"] for l in payload["lots"]]
+        self.assertIn("lot-seiko-chrono", lot_ids)
+
+    def test_case_diameter_and_numeral_search(self) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO lots (lot_id, source, title, brand, model, model_key, condition_tag, form, hearts, sold, hammer_eur, opened_at, ended_at, url, subtitle, bids_count, case_diameter_mm, updated_at)
+            VALUES
+            ('lot-dj36', 'catawiki', 'Rolex - Datejust 36 - Ref 16233', 'rolex', 'Datejust', 'rolex:datejust', 'box', 'round', 10, 1, 4200, '2026-08-01', '2026-08-10', 'https://ex.com/dj36', 'Automatic - Steel', 12, 36, '2026-08-10T00:00:00Z'),
+            ('lot-sub40', 'catawiki', 'Rolex - Submariner - Ref 16610', 'rolex', 'Submariner', 'rolex:submariner', 'box', 'round', 15, 1, 7500, '2026-08-01', '2026-08-10', 'https://ex.com/sub40', 'Automatic - Steel', 18, 40, '2026-08-10T00:00:00Z'),
+            ('lot-tissot-iii', 'catawiki', 'Tissot - Automatics III Day Date', 'tissot', 'Automatics III', 'tissot:automatics-iii', 'naked', 'round', 8, 1, 200, '2026-08-01', '2026-08-10', 'https://ex.com/t3', 'Automatic - Steel', 5, 39, '2026-08-10T00:00:00Z'),
+            ('lot-iwc-18', 'catawiki', 'IWC - Pilot Mark XVIII Spitfire', 'iwc', 'Mark XVIII', 'iwc:mark-xviii', 'box', 'round', 22, 1, 3100, '2026-08-01', '2026-08-10', 'https://ex.com/iwc18', 'Automatic - Steel', 14, 40, '2026-08-10T00:00:00Z'),
+            ('lot-iwc-20', 'catawiki', 'IWC - Pilot watch mark 20', 'iwc', 'Mark 20', 'iwc:mark-20', 'box', 'round', 19, 1, 3800, '2026-08-01', '2026-08-10', 'https://ex.com/iwc20', 'Automatic - Steel', 10, 40, '2026-08-10T00:00:00Z')
+            """
+        )
+        self.conn.commit()
+
+        # Diameter 36mm & 36 mm search
+        status, payload = get(self.conn, self.settings, "/api/auction-lots", {"status": ["settled"], "q": ["rolex 36mm"]})
+        self.assertEqual(status, 200)
+        lot_ids = [l["lot_id"] for l in payload["lots"]]
+        self.assertIn("lot-dj36", lot_ids)
+        self.assertNotIn("lot-sub40", lot_ids)
+
+        status, payload = get(self.conn, self.settings, "/api/auction-lots", {"status": ["settled"], "q": ["rolex 36 mm"]})
+        self.assertEqual(status, 200)
+        lot_ids = [l["lot_id"] for l in payload["lots"]]
+        self.assertIn("lot-dj36", lot_ids)
+        self.assertNotIn("lot-sub40", lot_ids)
+
+        # Roman <-> Arabic numeral search: Tissot 3 <-> Tissot III
+        status, payload = get(self.conn, self.settings, "/api/auction-lots", {"status": ["settled"], "q": ["tissot 3"]})
+        self.assertEqual(status, 200)
+        lot_ids = [l["lot_id"] for l in payload["lots"]]
+        self.assertIn("lot-tissot-iii", lot_ids)
+
+        status, payload = get(self.conn, self.settings, "/api/auction-lots", {"status": ["settled"], "q": ["tissot iii"]})
+        self.assertEqual(status, 200)
+        lot_ids = [l["lot_id"] for l in payload["lots"]]
+        self.assertIn("lot-tissot-iii", lot_ids)
+
+        # Mark 18 <-> Mark XVIII
+        status, payload = get(self.conn, self.settings, "/api/auction-lots", {"status": ["settled"], "q": ["mark 18"]})
+        self.assertEqual(status, 200)
+        lot_ids = [l["lot_id"] for l in payload["lots"]]
+        self.assertIn("lot-iwc-18", lot_ids)
+
+        status, payload = get(self.conn, self.settings, "/api/auction-lots", {"status": ["settled"], "q": ["mark xviii"]})
+        self.assertEqual(status, 200)
+        lot_ids = [l["lot_id"] for l in payload["lots"]]
+        self.assertIn("lot-iwc-18", lot_ids)
+
+        # Mark 20 <-> Mark XX
+        status, payload = get(self.conn, self.settings, "/api/auction-lots", {"status": ["settled"], "q": ["mark xx"]})
+        self.assertEqual(status, 200)
+        lot_ids = [l["lot_id"] for l in payload["lots"]]
+        self.assertIn("lot-iwc-20", lot_ids)
+
+        status, payload = get(self.conn, self.settings, "/api/auction-lots", {"status": ["settled"], "q": ["mark 20"]})
+        self.assertEqual(status, 200)
+        lot_ids = [l["lot_id"] for l in payload["lots"]]
+        self.assertIn("lot-iwc-20", lot_ids)
+
 
 if __name__ == "__main__":
     unittest.main()

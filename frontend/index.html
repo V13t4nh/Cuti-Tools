@@ -9,10 +9,11 @@
         const root = document.documentElement
         let savedTheme = null
         try { savedTheme = window.localStorage.getItem('cuti-theme') } catch { /* storage can be unavailable */ }
-        const theme = savedTheme === 'dark' || savedTheme === 'light'
-          ? savedTheme
-          : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+        const isSystem = !savedTheme || savedTheme === 'system'
+        const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+        const theme = isSystem ? (systemDark ? 'dark' : 'light') : (savedTheme === 'dark' ? 'dark' : 'light')
         root.dataset.theme = theme
+        root.dataset.themeMode = isSystem ? 'system' : theme
         root.style.colorScheme = theme
       })()
     </script>

@@ -13,6 +13,7 @@ from cuti.storage import (
     count_rows,
     ensure_catalog,
     fetch_quote_audit,
+    fetch_product,
     fetch_lots_for_liquidity,
     fetch_sold_lots_since,
     fetch_unquoted_deals,
@@ -363,6 +364,78 @@ class StorageTests(ProjectTestCase):
         # Brand - Model/Ref query
         found_brand_dash = search_products(self.conn, "Seiko - SPB143")
         self.assertEqual([p.product_id for p in found_brand_dash], ["seiko:prospex-spb143"])
+
+    def test_search_products_fuzzy_and_lots_discovery(self) -> None:
+        from pathlib import Path
+        catalog = load_catalog(Path(__file__).resolve().parents[1] / "config" / "catalog.json")
+        ensure_catalog(self.conn, catalog, NOW)
+
+        # Prefix matching
+        prefix_results = search_products(self.conn, "sub")
+        self.assertIn("rolex:submariner-124060", [p.product_id for p in prefix_results])
+
+        # Fuzzy typo matching against canonical products
+        fuzzy_results = search_products(self.conn, "seikoo")
+        self.assertIn("seiko:prospex-spb143", [p.product_id for p in fuzzy_results])
+
+        # Seed lots with King models and a negative check (talking watch)
+        self.conn.execute(
+            """
+            INSERT INTO lots (lot_id, source, title, brand, model, model_key, condition_tag, form, hearts, sold, hammer_eur, opened_at, ended_at, url, subtitle, bids_count, updated_at)
+            VALUES
+            ('lot-k1', 'catawiki', 'King Seiko Hi-Beat', 'seiko', 'King Seiko', 'seiko:king-seiko', 'naked', 'round', 10, 1, 300, '2026-08-01', '2026-08-10', 'https://ex.com/1', '', 5, '2026-08-10T00:00:00Z'),
+            ('lot-k2', 'catawiki', 'Rolex Air-King 14000', 'rolex', 'Air-King', 'rolex:air-king', 'naked', 'round', 10, 1, 3000, '2026-08-01', '2026-08-10', 'https://ex.com/2', '', 5, '2026-08-10T00:00:00Z'),
+            ('lot-k3', 'catawiki', 'Seiko Talking Watch', 'seiko', 'Talking Watch', 'seiko:talking-watch', 'naked', 'round', 10, 1, 50, '2026-08-01', '2026-08-10', 'https://ex.com/3', '', 5, '2026-08-10T00:00:00Z')
+            """
+        )
+        self.conn.commit()
+
+        # Query 'king' should discover King Seiko and Air-King, but NOT Talking Watch
+        king_results = [p.canonical_name for p in search_products(self.conn, "king")]
+        self.assertTrue(any("King Seiko" in name for name in king_results))
+        self.assertTrue(any("Air-King" in name for name in king_results))
+        self.assertFalse(any("Talking Watch" in name for name in king_results))
+
+        # Query 'airking' should discover Air-King
+        airking_results = [p.canonical_name for p in search_products(self.conn, "airking")]
+        self.assertTrue(any("Air-King" in name for name in airking_results))
+
+        # Insert lots with diameter and Roman numerals
+        self.conn.execute(
+            """
+            INSERT INTO lots (lot_id, source, title, brand, model, model_key, condition_tag, form, hearts, sold, hammer_eur, opened_at, ended_at, url, subtitle, bids_count, case_diameter_mm, updated_at)
+            VALUES
+            ('lot-dj36-market', 'catawiki', 'Rolex Datejust 36', 'rolex', 'Datejust 36', 'rolex:datejust-36', 'box', 'round', 10, 1, 4200, '2026-08-01', '2026-08-10', 'https://ex.com/dj36', 'Automatic', 12, 36, '2026-08-10T00:00:00Z'),
+            ('lot-t3-market', 'catawiki', 'Tissot Automatics III', 'tissot', 'Automatics III', 'tissot:automatics-iii', 'box', 'round', 5, 1, 250, '2026-08-01', '2026-08-10', 'https://ex.com/t3', 'Automatic', 5, 39, '2026-08-10T00:00:00Z'),
+            ('lot-m18-market', 'catawiki', 'IWC Mark XVIII', 'iwc', 'Mark XVIII', 'iwc:mark-xviii', 'box', 'round', 12, 1, 3200, '2026-08-01', '2026-08-10', 'https://ex.com/m18', 'Automatic', 8, 40, '2026-08-10T00:00:00Z')
+            """
+        )
+        self.conn.commit()
+
+        # Diameter 36mm & 36 mm search
+        d36_results = [p.canonical_name for p in search_products(self.conn, "rolex 36mm")]
+        self.assertTrue(any("Datejust 36" in name for name in d36_results))
+        d36_sp_results = [p.canonical_name for p in search_products(self.conn, "rolex 36 mm")]
+        self.assertTrue(any("Datejust 36" in name for name in d36_sp_results))
+
+        # Roman <-> Arabic numeral search: Tissot 3 <-> Tissot III
+        t3_results = [p.canonical_name for p in search_products(self.conn, "tissot 3")]
+        self.assertTrue(any("Automatics III" in name for name in t3_results))
+        t3_rom_results = [p.canonical_name for p in search_products(self.conn, "tissot iii")]
+        self.assertTrue(any("Automatics III" in name for name in t3_rom_results))
+
+        # Mark 18 <-> Mark XVIII
+        m18_results = [p.canonical_name for p in search_products(self.conn, "mark 18")]
+        self.assertTrue(any("Mark XVIII" in name for name in m18_results))
+        m18_rom_results = [p.canonical_name for p in search_products(self.conn, "mark xviii")]
+        self.assertTrue(any("Mark XVIII" in name for name in m18_rom_results))
+
+        # fetch_product should resolve market: product IDs
+        market_prod = fetch_product(self.conn, "market:seiko-king-seiko")
+        self.assertIsNotNone(market_prod)
+        self.assertEqual(market_prod.canonical_name, "King Seiko")
+        self.assertEqual(market_prod.brand, "seiko")
+
 
 
 if __name__ == "__main__":
